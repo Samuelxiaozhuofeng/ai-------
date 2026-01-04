@@ -456,6 +456,12 @@ kbd {
   color: var(--text-secondary);
 }
 
+.toolbar-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-md);
+}
+
 .toolbar-hint {
   font-size: var(--font-size-xs);
   color: var(--text-muted);

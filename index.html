@@ -55,8 +55,13 @@
             <div class="toolbar-info">
               <span id="chapterInfo">Select a chapter to start reading</span>
             </div>
-            <div class="toolbar-hint">
-              <kbd>Ctrl</kbd> + <kbd>B</kbd> to mark vocabulary
+            <div class="toolbar-actions">
+              <button class="btn btn-secondary" id="chapterAnalysisBtn" disabled>
+                <span class="icon">📖</span> Chapter Analysis
+              </button>
+              <div class="toolbar-hint">
+                <kbd>Ctrl</kbd> + <kbd>B</kbd> to mark vocabulary
+              </div>
             </div>
           </div>
           <article class="reading-content" id="readingContent">
@@ -114,7 +119,7 @@
           
           <div class="panel-footer">
             <button class="btn btn-primary btn-full" id="analyzeBtn" disabled>
-              <span class="icon">✨</span> Analyze with AI
+              <span class="icon">✨</span> Analyze Vocabulary
             </button>
             <button class="btn btn-secondary btn-full hidden" id="closeAnalysisBtn">
               <span class="icon">←</span> Back to Reading
@@ -176,6 +181,17 @@
                 <option value="日本語">日本語</option>
                 <option value="한국어">한국어</option>
               </select>
+            </div>
+            <div class="form-group">
+              <label for="readingLevelSelect">Reading Level</label>
+              <select id="readingLevelSelect" class="input">
+                <option value="beginner">初级 (Beginner)</option>
+                <option value="intermediate" selected>中级 (Intermediate)</option>
+                <option value="advanced">高级 (Advanced)</option>
+              </select>
+              <small style="color: var(--text-secondary); font-size: 12px; margin-top: 4px; display: block;">
+                用于调整章节分析的复杂度
+              </small>
             </div>
           </div>
           <div class="modal-footer">

@@ -131,34 +131,66 @@ ${markedItems.map((item, i) => `${i + 1}. ${item}`).join('\n')}
 export async function analyzeChapter(chapterContent, chapterTitle) {
     const settings = getSettings();
     const language = settings.language || '中文';
+    const readingLevel = settings.readingLevel || 'intermediate';
     
     if (!chapterContent) {
         throw new Error('No chapter content to analyze');
     }
     
-    const systemPrompt = `你是一位文学分析专家和语言教育家。请用${language}分析给定的章节内容。
+    // Adjust complexity based on reading level
+    const levelDescriptions = {
+        beginner: '初学者，需要简单易懂的解释',
+        intermediate: '中级学习者，可以理解适度复杂的内容',
+        advanced: '高级学习者，可以理解深层次的文学分析'
+    };
+    
+    const systemPrompt = `你是一位专业的语言教育家和阅读辅导专家。请用${language}为读者分析即将阅读的章节内容。
 
-请提供以下分析：
+**读者水平**: ${levelDescriptions[readingLevel]}
 
-## 章节总结
-简要概括本章节的主要内容和情节发展。
+**分析目的**:
+1. 为读者提供必要的背景信息
+2. 辅助加深读者对即将阅读内容的理解
+3. 减轻读者的阅读压力，让阅读过程更轻松
+4. 这是阅读前的预览分析，可以适度透露情节以帮助理解
 
-## 深层含义分析
-- 本章节除了字面含义之外，可能想要表达的深层主题或寓意
-- 作者可能的写作意图
-- 文化背景或历史背景的相关说明（如果适用）
+**分析要求**:
+- 总字数控制在500字左右
+- 结构清晰，重点突出
+- 语言简洁易懂
+- 根据章节实际内容灵活组织结构
 
-## 语言特点
-- 本章节中值得注意的语言表达方式
-- 重要的修辞手法或写作技巧
+**请包含以下内容**（根据章节实际情况选择相关模块）:
 
-请用清晰的结构呈现分析结果。`;
+## 📍 背景与情境
+- 本章节发生的时间、地点（如果明确）
+- 主要登场人物
+- 与前文的联系（如适用）
+
+## 📖 内容概览
+- 简要概括本章主要情节（可适度透露，帮助读者理解故事走向）
+- 核心主题或想要传达的内容
+
+## 💡 阅读重点
+- 本章节的阅读重点是什么
+- 需要特别注意的细节或转折
+
+## 🎭 情感基调
+- 本章的情感氛围（如：轻松、紧张、悲伤、幽默等）
+- 帮助读者心理准备
+
+## 📝 关键词汇预告
+- 挑选3-5个对理解本章至关重要的词汇或短语
+- 简单说明这些词汇为何重要或在文中的作用
+- 自然融入到分析中，不要单独列表
+
+请用流畅自然的方式组织以上内容，让读者感觉像是在听一位导师的阅读指导。`;
 
     const userPrompt = `# ${chapterTitle || '章节内容'}
 
 ${truncateText(chapterContent, 4000)}
 
-请对以上章节进行分析。`;
+请对以上章节进行阅读前分析，帮助读者更好地理解即将阅读的内容。`;
 
     const messages = [
         { role: 'system', content: systemPrompt },

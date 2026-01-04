@@ -60,6 +60,7 @@ const elements = {
     
     // Reading
     readingContent: document.getElementById('readingContent'),
+    chapterAnalysisBtn: document.getElementById('chapterAnalysisBtn'),
     
     // Vocabulary Panel
     vocabPanel: document.getElementById('vocabPanel'),
@@ -94,7 +95,8 @@ const elements = {
     toggleKeyBtn: document.getElementById('toggleKeyBtn'),
     modelSelect: document.getElementById('modelSelect'),
     fetchModelsBtn: document.getElementById('fetchModelsBtn'),
-    languageSelect: document.getElementById('languageSelect')
+    languageSelect: document.getElementById('languageSelect'),
+    readingLevelSelect: document.getElementById('readingLevelSelect')
 };
 
 // ============================================
@@ -128,7 +130,8 @@ function setupEventListeners() {
     elements.tabChapterAnalysis.addEventListener('click', () => switchTab('chapter-analysis'));
     
     // Analysis
-    elements.analyzeBtn.addEventListener('click', handleAnalyze);
+    elements.analyzeBtn.addEventListener('click', handleVocabularyAnalysis);
+    elements.chapterAnalysisBtn.addEventListener('click', handleChapterAnalysis);
     elements.closeAnalysisBtn.addEventListener('click', exitAnalysisMode);
     
     // Resize handle
@@ -248,6 +251,9 @@ function loadChapter(index) {
         btn.classList.toggle('active', i === index);
     });
     
+    // Enable chapter analysis button
+    elements.chapterAnalysisBtn.disabled = false;
+    
     // Initialize marker manager
     if (markerManager) {
         markerManager.destroy();
@@ -314,10 +320,15 @@ function updateVocabList() {
 // ============================================
 // AI Analysis
 // ============================================
-async function handleAnalyze() {
+async function handleVocabularyAnalysis() {
     if (!currentBook || !markerManager) return;
     
     const marks = markerManager.getMarks();
+    if (marks.length === 0) {
+        showNotification('请先标记一些词汇', 'error');
+        return;
+    }
+    
     const chapter = currentBook.chapters[currentChapterIndex];
     
     // Enter analysis mode
@@ -325,31 +336,46 @@ async function handleAnalyze() {
     
     // Set loading state
     elements.vocabAnalysisContent.innerHTML = '<p class="loading">Analyzing vocabulary...</p>';
-    elements.chapterAnalysisContent.innerHTML = '<p class="loading">Analyzing chapter...</p>';
     
     // Switch to vocabulary analysis tab
     switchTab('vocab-analysis');
     
-    // Run concurrent analysis
-    await runConcurrentAnalysis(
-        marks.map(m => m.text),
-        chapter.content,
-        chapter.title,
-        {
-            onVocabularyComplete: (result) => {
-                renderVocabularyAnalysis(result);
-            },
-            onVocabularyError: (error) => {
-                elements.vocabAnalysisContent.innerHTML = `<p class="text-error">Error: ${escapeHtml(error.message)}</p>`;
-            },
-            onChapterComplete: (result) => {
-                renderChapterAnalysis(result);
-            },
-            onChapterError: (error) => {
-                elements.chapterAnalysisContent.innerHTML = `<p class="text-error">Error: ${escapeHtml(error.message)}</p>`;
-            }
-        }
-    );
+    // Import analyzeVocabulary
+    const { analyzeVocabulary } = await import('./ai-service.js');
+    
+    try {
+        const result = await analyzeVocabulary(marks.map(m => m.text), chapter.content);
+        renderVocabularyAnalysis(result);
+    } catch (error) {
+        elements.vocabAnalysisContent.innerHTML = `<p class="text-error">Error: ${escapeHtml(error.message)}</p>`;
+        showNotification(`分析失败: ${error.message}`, 'error');
+    }
+}
+
+async function handleChapterAnalysis() {
+    if (!currentBook) return;
+    
+    const chapter = currentBook.chapters[currentChapterIndex];
+    
+    // Enter analysis mode
+    enterAnalysisMode();
+    
+    // Set loading state
+    elements.chapterAnalysisContent.innerHTML = '<p class="loading">Analyzing chapter...</p>';
+    
+    // Switch to chapter analysis tab
+    switchTab('chapter-analysis');
+    
+    // Import analyzeChapter
+    const { analyzeChapter } = await import('./ai-service.js');
+    
+    try {
+        const result = await analyzeChapter(chapter.content, chapter.title);
+        renderChapterAnalysis(result);
+    } catch (error) {
+        elements.chapterAnalysisContent.innerHTML = `<p class="text-error">Error: ${escapeHtml(error.message)}</p>`;
+        showNotification(`分析失败: ${error.message}`, 'error');
+    }
 }
 
 function enterAnalysisMode() {
@@ -578,6 +604,7 @@ function loadSettingsToForm() {
     elements.apiUrl.value = settings.apiUrl || '';
     elements.apiKey.value = settings.apiKey || '';
     elements.languageSelect.value = settings.language || '中文';
+    elements.readingLevelSelect.value = settings.readingLevel || 'intermediate';
     
     // If model is saved, add it as an option
     if (settings.model) {
@@ -638,7 +665,8 @@ function handleSaveSettings() {
         apiUrl: elements.apiUrl.value.trim(),
         apiKey: elements.apiKey.value.trim(),
         model: elements.modelSelect.value,
-        language: elements.languageSelect.value
+        language: elements.languageSelect.value,
+        readingLevel: elements.readingLevelSelect.value
     };
     
     if (saveSettings(settings)) {
