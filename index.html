@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>📚 Language Reader</title>
+    <meta
+      name="description"
+      content="A smart language learning tool with EPUB support and AI-powered vocabulary analysis"
+    />
+    <link rel="stylesheet" href="styles/main.css" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+  </head>
+  <body>
+    <div class="app-container">
+      <!-- Header -->
+      <header class="app-header">
+        <div class="header-left">
+          <h1 class="logo">📚 Language Reader</h1>
+          <span class="book-title" id="bookTitle">No book loaded</span>
+        </div>
+        <div class="header-right">
+          <button class="btn btn-ghost" id="themeToggleBtn" title="Toggle theme">
+            <span class="icon" id="themeIcon">🌙</span>
+          </button>
+          <button class="btn btn-primary" id="importBtn">
+            <span class="icon">📁</span> Import EPUB
+          </button>
+          <button class="btn btn-ghost" id="settingsBtn">
+            <span class="icon">⚙️</span>
+          </button>
+        </div>
+      </header>
+
+      <!-- Main Content -->
+      <main class="main-content">
+        <!-- Sidebar: Chapters -->
+        <aside class="sidebar chapters-panel">
+          <div class="panel-header">
+            <h2>Chapters</h2>
+          </div>
+          <nav class="chapters-list" id="chaptersList">
+            <p class="empty-state">Import an EPUB to see chapters</p>
+          </nav>
+        </aside>
+
+        <!-- Reading Area -->
+        <section class="reading-panel">
+          <div class="reading-toolbar">
+            <div class="toolbar-info">
+              <span id="chapterInfo">Select a chapter to start reading</span>
+            </div>
+            <div class="toolbar-hint">
+              <kbd>Ctrl</kbd> + <kbd>B</kbd> to mark vocabulary
+            </div>
+          </div>
+          <article class="reading-content" id="readingContent">
+            <div class="welcome-state">
+              <div class="welcome-icon">📖</div>
+              <h2>Welcome to Language Reader</h2>
+              <p>Import an EPUB file to start your language learning journey</p>
+              <button class="btn btn-primary btn-large" id="importBtnWelcome">
+                <span class="icon">📁</span> Import EPUB
+              </button>
+            </div>
+          </article>
+        </section>
+
+        <!-- Resize Handle -->
+        <div class="resize-handle" id="resizeHandle"></div>
+
+        <!-- Sidebar: Vocabulary & Analysis -->
+        <aside class="sidebar vocab-panel" id="vocabPanel">
+          <div class="panel-header">
+            <div class="panel-tabs">
+              <button class="tab-btn active" data-tab="vocab" id="tabVocab">
+                <span>📝</span> Words
+                <span class="badge" id="vocabCount">0</span>
+              </button>
+              <button class="tab-btn" data-tab="vocab-analysis" id="tabVocabAnalysis">
+                <span>✨</span> Vocabulary
+              </button>
+              <button class="tab-btn" data-tab="chapter-analysis" id="tabChapterAnalysis">
+                <span>📖</span> Chapter
+              </button>
+            </div>
+          </div>
+          
+          <!-- Tab: Marked Words -->
+          <div class="tab-content active" id="vocabTab">
+            <div class="vocab-list" id="vocabList">
+              <p class="empty-state">Select text and press Ctrl+B to mark</p>
+            </div>
+          </div>
+          
+          <!-- Tab: Vocabulary Analysis -->
+          <div class="tab-content" id="vocabAnalysisTab">
+            <div class="analysis-content-body" id="vocabAnalysisContent">
+              <p class="empty-state">Click "Analyze with AI" to get vocabulary explanations</p>
+            </div>
+          </div>
+          
+          <!-- Tab: Chapter Analysis -->
+          <div class="tab-content" id="chapterAnalysisTab">
+            <div class="analysis-content-body markdown-body" id="chapterAnalysisContent">
+              <p class="empty-state">Click "Analyze with AI" to get chapter analysis</p>
+            </div>
+          </div>
+          
+          <div class="panel-footer">
+            <button class="btn btn-primary btn-full" id="analyzeBtn" disabled>
+              <span class="icon">✨</span> Analyze with AI
+            </button>
+            <button class="btn btn-secondary btn-full hidden" id="closeAnalysisBtn">
+              <span class="icon">←</span> Back to Reading
+            </button>
+          </div>
+        </aside>
+      </main>
+
+      <!-- Settings Modal -->
+      <div class="modal-overlay" id="settingsModal">
+        <div class="modal">
+          <div class="modal-header">
+            <h2>⚙️ AI Settings</h2>
+            <button class="btn btn-ghost btn-small" id="closeSettingsBtn">
+              ✕
+            </button>
+          </div>
+          <div class="modal-body">
+            <div class="form-group">
+              <label for="apiUrl">API URL</label>
+              <input
+                type="url"
+                id="apiUrl"
+                placeholder="https://api.openai.com/v1"
+                class="input"
+              />
+            </div>
+            <div class="form-group">
+              <label for="apiKey">API Key</label>
+              <div class="input-group">
+                <input
+                  type="password"
+                  id="apiKey"
+                  placeholder="sk-..."
+                  class="input"
+                />
+                <button class="btn btn-ghost" id="toggleKeyBtn">👁️</button>
+              </div>
+            </div>
+            <div class="form-group">
+              <label for="modelSelect">Model</label>
+              <div class="input-group">
+                <select id="modelSelect" class="input">
+                  <option value="">Select a model...</option>
+                </select>
+                <button class="btn btn-secondary" id="fetchModelsBtn">
+                  Fetch Models
+                </button>
+              </div>
+            </div>
+            <div class="form-group">
+              <label for="languageSelect">Explanation Language</label>
+              <select id="languageSelect" class="input">
+                <option value="中文" selected>中文</option>
+                <option value="English">English</option>
+                <option value="Español">Español</option>
+                <option value="Français">Français</option>
+                <option value="Deutsch">Deutsch</option>
+                <option value="日本語">日本語</option>
+                <option value="한국어">한국어</option>
+              </select>
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button class="btn btn-ghost" id="cancelSettingsBtn">Cancel</button>
+            <button class="btn btn-primary" id="saveSettingsBtn">
+              Save Settings
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- File Input (hidden) -->
+      <input type="file" id="fileInput" accept=".epub" hidden />
+    </div>
+
+    <!-- Scripts -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    <script type="module" src="js/app.js"></script>
+  </body>
+</html>
