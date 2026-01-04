@@ -123,6 +123,68 @@ ${markedItems.map((item, i) => `${i + 1}. ${item}`).join('\n')}
 }
 
 /**
+ * Analyze a single word instantly with context
+ * @param {string} word - The marked word/phrase
+ * @param {Object} context - Context object with previous, current, and next sentences
+ * @returns {Promise<Object>} Analysis result as JSON object
+ */
+export async function analyzeWordInstant(word, context) {
+    const settings = getSettings();
+    const language = settings.language || '中文';
+    
+    if (!word) {
+        throw new Error('No word to analyze');
+    }
+    
+    const systemPrompt = `你是一位专业的语言学习助手。请用${language}快速分析用户标记的词汇或短语。
+
+你必须以JSON格式返回分析结果，格式如下：
+{
+  "word": "原文词汇",
+  "partOfSpeech": "词性（如：动词、名词、形容词等）",
+  "meaning": "基本含义",
+  "usage": "用法说明",
+  "contextualMeaning": "在当前上下文中的具体含义"
+}
+
+注意：
+1. 只返回JSON，不要添加任何其他文字
+2. 不需要提供例句
+3. 重点关注该词在给定上下文中的具体含义
+4. 如果是短语，按短语整体解释`;
+
+    const contextText = context.fullContext || context.currentSentence || '';
+    
+    const userPrompt = `请分析以下词汇：
+    
+**标记的词汇**: ${word}
+
+**上下文**:
+${contextText}
+
+请以JSON格式返回该词汇的分析。`;
+
+    const messages = [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: userPrompt }
+    ];
+    
+    const result = await chatCompletion(messages, { maxTokens: 500, temperature: 0.3 });
+    
+    // Parse JSON response
+    try {
+        const jsonMatch = result.match(/\{[\s\S]*\}/);
+        if (jsonMatch) {
+            return JSON.parse(jsonMatch[0]);
+        }
+        throw new Error('Invalid JSON response');
+    } catch (e) {
+        console.error('Failed to parse JSON:', result);
+        throw new Error('Failed to parse AI response');
+    }
+}
+
+/**
  * Analyze chapter content with AI
  * @param {string} chapterContent - Full chapter content
  * @param {string} chapterTitle - Chapter title

@@ -64,17 +64,11 @@ const elements = {
     
     // Vocabulary Panel
     vocabPanel: document.getElementById('vocabPanel'),
-    vocabList: document.getElementById('vocabList'),
-    vocabCount: document.getElementById('vocabCount'),
-    analyzeBtn: document.getElementById('analyzeBtn'),
-    closeAnalysisBtn: document.getElementById('closeAnalysisBtn'),
     resizeHandle: document.getElementById('resizeHandle'),
     
     // Tabs
-    tabVocab: document.getElementById('tabVocab'),
     tabVocabAnalysis: document.getElementById('tabVocabAnalysis'),
     tabChapterAnalysis: document.getElementById('tabChapterAnalysis'),
-    vocabTab: document.getElementById('vocabTab'),
     vocabAnalysisTab: document.getElementById('vocabAnalysisTab'),
     chapterAnalysisTab: document.getElementById('chapterAnalysisTab'),
     
@@ -125,14 +119,11 @@ function setupEventListeners() {
     elements.themeToggleBtn.addEventListener('click', toggleTheme);
     
     // Tab switching
-    elements.tabVocab.addEventListener('click', () => switchTab('vocab'));
     elements.tabVocabAnalysis.addEventListener('click', () => switchTab('vocab-analysis'));
     elements.tabChapterAnalysis.addEventListener('click', () => switchTab('chapter-analysis'));
     
-    // Analysis
-    elements.analyzeBtn.addEventListener('click', handleVocabularyAnalysis);
+    // Chapter Analysis
     elements.chapterAnalysisBtn.addEventListener('click', handleChapterAnalysis);
-    elements.closeAnalysisBtn.addEventListener('click', exitAnalysisMode);
     
     // Resize handle
     setupResizeHandle();
@@ -279,86 +270,114 @@ function loadChapter(index) {
 // ============================================
 // Vocabulary Management
 // ============================================
-function handleMarksChange(marks) {
-    updateVocabList();
-    
+async function handleMarksChange(marks, newMark) {
     // Save marks
     if (currentBook && bookHash) {
         const chapterId = currentBook.chapters[currentChapterIndex].id;
         saveChapterMarks(bookHash, chapterId, marks);
     }
+    
+    // If a new mark was added, analyze it instantly
+    if (newMark) {
+        await analyzeWordInstantly(newMark);
+    }
 }
 
-function updateVocabList() {
-    const marks = markerManager?.getMarks() || [];
+async function analyzeWordInstantly(markData) {
+    // Switch to vocabulary tab if not already there
+    switchTab('vocab-analysis');
     
-    elements.vocabCount.textContent = marks.length;
-    elements.analyzeBtn.disabled = marks.length === 0;
+    // Show loading card at the top
+    const loadingCard = createWordAnalysisCard(markData.text, null, true);
+    prependToVocabAnalysis(loadingCard);
     
-    if (marks.length === 0) {
-        elements.vocabList.innerHTML = '<p class="empty-state">Select text and press Ctrl+B to mark</p>';
-        return;
+    try {
+        // Import and call analyzeWordInstant
+        const { analyzeWordInstant } = await import('./ai-service.js');
+        const result = await analyzeWordInstant(markData.text, markData.context);
+        
+        // Replace loading card with result
+        const resultCard = createWordAnalysisCard(markData.text, result, false);
+        loadingCard.replaceWith(resultCard);
+    } catch (error) {
+        console.error('Instant analysis error:', error);
+        loadingCard.innerHTML = `
+            <div class="vocab-card-header">
+                <span class="vocab-card-word">${escapeHtml(markData.text)}</span>
+            </div>
+            <div class="vocab-card-body">
+                <p class="text-error">分析失败: ${escapeHtml(error.message)}</p>
+            </div>
+        `;
+    }
+}
+
+function prependToVocabAnalysis(element) {
+    const container = elements.vocabAnalysisContent;
+    
+    // Remove empty state if present
+    const emptyState = container.querySelector('.empty-state');
+    if (emptyState) {
+        emptyState.remove();
     }
     
-    elements.vocabList.innerHTML = marks.map(mark => `
-        <div class="vocab-item" data-mark-id="${mark.id}">
-            <span class="vocab-text">${escapeHtml(mark.text)}</span>
-            <button class="vocab-remove" title="Remove">✕</button>
-        </div>
-    `).join('');
+    // Prepend new element
+    container.insertBefore(element, container.firstChild);
+}
+
+function createWordAnalysisCard(word, analysis, isLoading) {
+    const card = document.createElement('div');
+    card.className = 'vocab-card';
     
-    // Add remove listeners
-    elements.vocabList.querySelectorAll('.vocab-remove').forEach(btn => {
-        btn.addEventListener('click', (e) => {
-            e.stopPropagation();
-            const markId = btn.closest('.vocab-item').dataset.markId;
-            markerManager.removeMarkById(markId);
-        });
-    });
+    if (isLoading) {
+        card.innerHTML = `
+            <div class="vocab-card-header">
+                <span class="vocab-card-word">${escapeHtml(word)}</span>
+            </div>
+            <div class="vocab-card-body">
+                <p class="loading">Analyzing...</p>
+            </div>
+        `;
+        return card;
+    }
+    
+    card.innerHTML = `
+        <div class="vocab-card-header">
+            <span class="vocab-card-word">${escapeHtml(analysis.word || word)}</span>
+            ${analysis.partOfSpeech ? `<span class="vocab-card-pos">${escapeHtml(analysis.partOfSpeech)}</span>` : ''}
+        </div>
+        <div class="vocab-card-body">
+            ${analysis.meaning ? `
+                <div class="vocab-card-row">
+                    <div class="vocab-card-label">含义</div>
+                    <div class="vocab-card-value">${escapeHtml(analysis.meaning)}</div>
+                </div>
+            ` : ''}
+            ${analysis.usage ? `
+                <div class="vocab-card-row">
+                    <div class="vocab-card-label">用法</div>
+                    <div class="vocab-card-value">${escapeHtml(analysis.usage)}</div>
+                </div>
+            ` : ''}
+            ${analysis.contextualMeaning ? `
+                <div class="vocab-card-row">
+                    <div class="vocab-card-label">上下文含义</div>
+                    <div class="vocab-card-value">${escapeHtml(analysis.contextualMeaning)}</div>
+                </div>
+            ` : ''}
+        </div>
+    `;
+    
+    return card;
 }
 
 // ============================================
 // AI Analysis
 // ============================================
-async function handleVocabularyAnalysis() {
-    if (!currentBook || !markerManager) return;
-    
-    const marks = markerManager.getMarks();
-    if (marks.length === 0) {
-        showNotification('请先标记一些词汇', 'error');
-        return;
-    }
-    
-    const chapter = currentBook.chapters[currentChapterIndex];
-    
-    // Enter analysis mode
-    enterAnalysisMode();
-    
-    // Set loading state
-    elements.vocabAnalysisContent.innerHTML = '<p class="loading">Analyzing vocabulary...</p>';
-    
-    // Switch to vocabulary analysis tab
-    switchTab('vocab-analysis');
-    
-    // Import analyzeVocabulary
-    const { analyzeVocabulary } = await import('./ai-service.js');
-    
-    try {
-        const result = await analyzeVocabulary(marks.map(m => m.text), chapter.content);
-        renderVocabularyAnalysis(result);
-    } catch (error) {
-        elements.vocabAnalysisContent.innerHTML = `<p class="text-error">Error: ${escapeHtml(error.message)}</p>`;
-        showNotification(`分析失败: ${error.message}`, 'error');
-    }
-}
-
 async function handleChapterAnalysis() {
     if (!currentBook) return;
     
     const chapter = currentBook.chapters[currentChapterIndex];
-    
-    // Enter analysis mode
-    enterAnalysisMode();
     
     // Set loading state
     elements.chapterAnalysisContent.innerHTML = '<p class="loading">Analyzing chapter...</p>';
@@ -378,97 +397,15 @@ async function handleChapterAnalysis() {
     }
 }
 
-function enterAnalysisMode() {
-    isAnalysisMode = true;
-    elements.mainContent.classList.add('analysis-mode');
-    elements.analyzeBtn.classList.add('hidden');
-    elements.closeAnalysisBtn.classList.remove('hidden');
-    
-    // Restore saved layout
-    const layout = getLayout();
-    applyLayout(layout);
-}
-
-function exitAnalysisMode() {
-    isAnalysisMode = false;
-    elements.mainContent.classList.remove('analysis-mode');
-    elements.analyzeBtn.classList.remove('hidden');
-    elements.closeAnalysisBtn.classList.add('hidden');
-    
-    // Switch back to vocab tab
-    switchTab('vocab');
-    
-    // Reset inline styles
-    elements.readingPanel.style.flex = '';
-    elements.vocabPanel.style.flex = '';
-}
-
 function switchTab(tabName) {
     // Update tab buttons
-    [elements.tabVocab, elements.tabVocabAnalysis, elements.tabChapterAnalysis].forEach(btn => {
+    [elements.tabVocabAnalysis, elements.tabChapterAnalysis].forEach(btn => {
         btn.classList.toggle('active', btn.dataset.tab === tabName);
     });
     
     // Update tab content
-    elements.vocabTab.classList.toggle('active', tabName === 'vocab');
     elements.vocabAnalysisTab.classList.toggle('active', tabName === 'vocab-analysis');
     elements.chapterAnalysisTab.classList.toggle('active', tabName === 'chapter-analysis');
-}
-
-function renderVocabularyAnalysis(result) {
-    try {
-        // Try to parse JSON
-        let data;
-        const jsonMatch = result.match(/\{[\s\S]*\}/);
-        if (jsonMatch) {
-            data = JSON.parse(jsonMatch[0]);
-        } else {
-            // Fallback: display as formatted text
-            elements.vocabAnalysisContent.innerHTML = formatMarkdown(result);
-            return;
-        }
-        
-        if (!data.vocabulary || !Array.isArray(data.vocabulary)) {
-            elements.vocabAnalysisContent.innerHTML = formatMarkdown(result);
-            return;
-        }
-        
-        // Render structured vocabulary cards
-        const html = data.vocabulary.map(item => `
-            <div class="vocab-card">
-                <div class="vocab-card-header">
-                    <span class="vocab-card-word">${escapeHtml(item.original || '')}</span>
-                    ${item.partOfSpeech ? `<span class="vocab-card-pos">${escapeHtml(item.partOfSpeech)}</span>` : ''}
-                </div>
-                <div class="vocab-card-body">
-                    ${item.definition ? `
-                        <div class="vocab-card-row">
-                            <div class="vocab-card-label">Definition</div>
-                            <div class="vocab-card-value">${escapeHtml(item.definition)}</div>
-                        </div>
-                    ` : ''}
-                    ${item.contextUsage ? `
-                        <div class="vocab-card-row">
-                            <div class="vocab-card-label">Context Usage</div>
-                            <div class="vocab-card-value">${escapeHtml(item.contextUsage)}</div>
-                        </div>
-                    ` : ''}
-                    ${item.example ? `
-                        <div class="vocab-card-row">
-                            <div class="vocab-card-label">Example</div>
-                            <div class="vocab-card-value vocab-card-example">${escapeHtml(item.example)}</div>
-                        </div>
-                    ` : ''}
-                </div>
-            </div>
-        `).join('');
-        
-        elements.vocabAnalysisContent.innerHTML = html || '<p class="empty-state">No vocabulary analysis available</p>';
-        
-    } catch (e) {
-        console.warn('Failed to parse JSON, using formatted text:', e);
-        elements.vocabAnalysisContent.innerHTML = formatMarkdown(result);
-    }
 }
 
 function renderChapterAnalysis(result) {

@@ -56,6 +56,9 @@ export class MarkerManager {
             return;
         }
         
+        // Extract context before creating the mark
+        const context = this.extractContext(range);
+        
         // Create mark element
         const markId = `mark-${++this.markIdCounter}`;
         const markEl = document.createElement('mark');
@@ -78,19 +81,81 @@ export class MarkerManager {
         // Add to marks array
         const markData = {
             id: markId,
-            text: selectedText
+            text: selectedText,
+            context: context
         };
         this.marks.push(markData);
         
         // Callback
         if (this.onMarkChange) {
-            this.onMarkChange(this.marks);
+            this.onMarkChange(this.marks, markData);
         }
         
         // Add click handler to mark for removal
         markEl.addEventListener('click', () => {
             this.unmark(markEl);
         });
+    }
+    
+    /**
+     * Extract context sentences around the selection
+     * @param {Range} range - Selection range
+     * @returns {Object} Context object with previousSentence, currentSentence, nextSentence
+     */
+    extractContext(range) {
+        // Get the full text content
+        const fullText = this.container.textContent;
+        
+        // Find the offset of the selection in the full text
+        const preSelectionRange = document.createRange();
+        preSelectionRange.selectNodeContents(this.container);
+        preSelectionRange.setEnd(range.startContainer, range.startOffset);
+        const offset = preSelectionRange.toString().length;
+        
+        // Sentence delimiters (including Spanish punctuation)
+        const sentenceDelimiters = /[.!?¡¿。！？]+\s*/g;
+        
+        // Find all sentence boundaries
+        const boundaries = [0];
+        let match;
+        while ((match = sentenceDelimiters.exec(fullText)) !== null) {
+            boundaries.push(match.index + match[0].length);
+        }
+        boundaries.push(fullText.length);
+        
+        // Find which sentence contains the selection
+        let currentSentenceIndex = -1;
+        for (let i = 0; i < boundaries.length - 1; i++) {
+            if (offset >= boundaries[i] && offset < boundaries[i + 1]) {
+                currentSentenceIndex = i;
+                break;
+            }
+        }
+        
+        if (currentSentenceIndex === -1) {
+            currentSentenceIndex = boundaries.length - 2;
+        }
+        
+        // Extract sentences
+        const previousSentence = currentSentenceIndex > 0 
+            ? fullText.substring(boundaries[currentSentenceIndex - 1], boundaries[currentSentenceIndex]).trim()
+            : '';
+        
+        const currentSentence = fullText.substring(
+            boundaries[currentSentenceIndex], 
+            boundaries[currentSentenceIndex + 1]
+        ).trim();
+        
+        const nextSentence = currentSentenceIndex < boundaries.length - 2
+            ? fullText.substring(boundaries[currentSentenceIndex + 1], boundaries[currentSentenceIndex + 2]).trim()
+            : '';
+        
+        return {
+            previousSentence,
+            currentSentence,
+            nextSentence,
+            fullContext: [previousSentence, currentSentence, nextSentence].filter(s => s).join(' ')
+        };
     }
     
     /**

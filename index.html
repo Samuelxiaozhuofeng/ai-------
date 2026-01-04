@@ -83,11 +83,7 @@
         <aside class="sidebar vocab-panel" id="vocabPanel">
           <div class="panel-header">
             <div class="panel-tabs">
-              <button class="tab-btn active" data-tab="vocab" id="tabVocab">
-                <span>📝</span> Words
-                <span class="badge" id="vocabCount">0</span>
-              </button>
-              <button class="tab-btn" data-tab="vocab-analysis" id="tabVocabAnalysis">
+              <button class="tab-btn active" data-tab="vocab-analysis" id="tabVocabAnalysis">
                 <span>✨</span> Vocabulary
               </button>
               <button class="tab-btn" data-tab="chapter-analysis" id="tabChapterAnalysis">
@@ -96,34 +92,18 @@
             </div>
           </div>
           
-          <!-- Tab: Marked Words -->
-          <div class="tab-content active" id="vocabTab">
-            <div class="vocab-list" id="vocabList">
-              <p class="empty-state">Select text and press Ctrl+B to mark</p>
-            </div>
-          </div>
-          
           <!-- Tab: Vocabulary Analysis -->
-          <div class="tab-content" id="vocabAnalysisTab">
+          <div class="tab-content active" id="vocabAnalysisTab">
             <div class="analysis-content-body" id="vocabAnalysisContent">
-              <p class="empty-state">Click "Analyze with AI" to get vocabulary explanations</p>
+              <p class="empty-state">Mark words with Ctrl+B to see instant AI explanations</p>
             </div>
           </div>
           
           <!-- Tab: Chapter Analysis -->
           <div class="tab-content" id="chapterAnalysisTab">
             <div class="analysis-content-body markdown-body" id="chapterAnalysisContent">
-              <p class="empty-state">Click "Analyze with AI" to get chapter analysis</p>
+              <p class="empty-state">Click "Chapter Analysis" to get chapter overview</p>
             </div>
-          </div>
-          
-          <div class="panel-footer">
-            <button class="btn btn-primary btn-full" id="analyzeBtn" disabled>
-              <span class="icon">✨</span> Analyze Vocabulary
-            </button>
-            <button class="btn btn-secondary btn-full hidden" id="closeAnalysisBtn">
-              <span class="icon">←</span> Back to Reading
-            </button>
           </div>
         </aside>
       </main>
