@@ -20,8 +20,8 @@ const DEFAULT_SETTINGS = {
 
 // Default layout settings
 const DEFAULT_LAYOUT = {
-  readerWidth: 60, // percentage
-  panelWidth: 40,  // percentage
+  readerWidth: 70, // percentage
+  panelWidth: 30,  // percentage
 };
 
 /**

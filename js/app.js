@@ -46,6 +46,7 @@ const elements = {
     
     // Header
     bookTitle: document.getElementById('bookTitle'),
+    toggleSidebarBtn: document.getElementById('toggleSidebarBtn'),
     themeToggleBtn: document.getElementById('themeToggleBtn'),
     themeIcon: document.getElementById('themeIcon'),
     
@@ -99,6 +100,9 @@ const elements = {
 function init() {
     // Load theme
     initTheme();
+
+    // Load layout
+    applyLayout(getLayout());
     
     // Load settings
     loadSettingsToForm();
@@ -117,6 +121,11 @@ function setupEventListeners() {
     
     // Theme toggle
     elements.themeToggleBtn.addEventListener('click', toggleTheme);
+    
+    // Sidebar toggle
+    if (elements.toggleSidebarBtn) {
+        elements.toggleSidebarBtn.addEventListener('click', toggleSidebar);
+    }
     
     // Tab switching
     elements.tabVocabAnalysis.addEventListener('click', () => switchTab('vocab-analysis'));
@@ -474,18 +483,21 @@ function applyTheme(theme) {
     elements.themeIcon.textContent = theme === 'dark' ? '🌙' : '☀️';
 }
 
+function toggleSidebar() {
+    elements.chaptersPanel.classList.toggle('collapsed');
+}
+
 // ============================================
 // Resize Handle
 // ============================================
 function setupResizeHandle() {
-    let startX, startReaderWidth, startPanelWidth;
+    let startX, startPanelWidth;
     
     elements.resizeHandle.addEventListener('mousedown', (e) => {
         isResizing = true;
         startX = e.clientX;
         const mainRect = elements.mainContent.getBoundingClientRect();
-        startReaderWidth = elements.readingPanel.getBoundingClientRect().width / mainRect.width * 100;
-        startPanelWidth = elements.vocabPanel.getBoundingClientRect().width / mainRect.width * 100;
+        startPanelWidth = elements.vocabPanel.getBoundingClientRect().width;
         
         elements.resizeHandle.classList.add('dragging');
         document.body.style.cursor = 'col-resize';
@@ -496,18 +508,15 @@ function setupResizeHandle() {
         if (!isResizing) return;
         
         const mainRect = elements.mainContent.getBoundingClientRect();
-        const deltaX = e.clientX - startX;
-        const deltaPercent = (deltaX / mainRect.width) * 100;
+        const deltaX = startX - e.clientX; // Dragging left increases width
         
-        let newReaderWidth = startReaderWidth + deltaPercent;
-        let newPanelWidth = startPanelWidth - deltaPercent;
+        let newPanelWidth = startPanelWidth + deltaX;
+        let newPanelPercent = (newPanelWidth / mainRect.width) * 100;
         
-        // Constraints
-        newReaderWidth = Math.max(30, Math.min(70, newReaderWidth));
-        newPanelWidth = Math.max(30, Math.min(70, newPanelWidth));
+        // Constraints (20% to 50%)
+        newPanelPercent = Math.max(20, Math.min(50, newPanelPercent));
         
-        elements.readingPanel.style.flex = `0 0 ${newReaderWidth}%`;
-        elements.vocabPanel.style.flex = `0 0 ${newPanelWidth}%`;
+        elements.vocabPanel.style.width = `${newPanelPercent}%`;
     });
     
     document.addEventListener('mouseup', () => {
@@ -521,16 +530,16 @@ function setupResizeHandle() {
         // Save layout
         const mainRect = elements.mainContent.getBoundingClientRect();
         const layout = {
-            readerWidth: elements.readingPanel.getBoundingClientRect().width / mainRect.width * 100,
-            panelWidth: elements.vocabPanel.getBoundingClientRect().width / mainRect.width * 100
+            panelWidth: (elements.vocabPanel.getBoundingClientRect().width / mainRect.width) * 100
         };
         saveLayout(layout);
     });
 }
 
 function applyLayout(layout) {
-    elements.readingPanel.style.flex = `0 0 ${layout.readerWidth}%`;
-    elements.vocabPanel.style.flex = `0 0 ${layout.panelWidth}%`;
+    if (layout && layout.panelWidth) {
+        elements.vocabPanel.style.width = `${layout.panelWidth}%`;
+    }
 }
 
 // ============================================
