@@ -71,25 +71,38 @@ export async function parseEpub(file) {
             const content = await zip.file(filePath)?.async('text');
             if (content) {
                 const chapterDoc = parser.parseFromString(content, 'application/xhtml+xml');
-                
-                // Try to get chapter title
-                let chapterTitle = '';
-                const h1 = chapterDoc.querySelector('h1, h2, h3');
-                if (h1) {
-                    chapterTitle = h1.textContent.trim();
-                }
-                
-                // Extract text content
                 const body = chapterDoc.querySelector('body');
-                const textContent = body ? extractTextContent(body) : '';
                 
-                if (textContent.trim()) {
-                    chapters.push({
-                        id: item.id,
-                        title: chapterTitle || `Chapter ${chapters.length + 1}`,
-                        content: textContent.trim(),
-                        rawHtml: body?.innerHTML || ''
+                if (!body) continue;
+                
+                // Try to split content by chapter headings
+                const subChapters = splitContentByHeadings(body, item.id);
+                
+                if (subChapters.length > 0) {
+                    // Multiple chapters found in this file
+                    subChapters.forEach(subChapter => {
+                        if (subChapter.content.trim()) {
+                            chapters.push({
+                                id: `${item.id}_${subChapter.index}`,
+                                title: subChapter.title || `Chapter ${chapters.length + 1}`,
+                                content: subChapter.content.trim(),
+                                rawHtml: subChapter.rawHtml
+                            });
+                        }
                     });
+                } else {
+                    // Fallback to single chapter for this file
+                    const chapterTitle = chapterDoc.querySelector('h1, h2, h3')?.textContent.trim() || '';
+                    const textContent = extractTextContent(body);
+                    
+                    if (textContent.trim()) {
+                        chapters.push({
+                            id: item.id,
+                            title: chapterTitle || `Chapter ${chapters.length + 1}`,
+                            content: textContent.trim(),
+                            rawHtml: body.innerHTML || ''
+                        });
+                    }
                 }
             }
         } catch (e) {
@@ -105,6 +118,117 @@ export async function parseEpub(file) {
         title,
         chapters
     };
+}
+
+/**
+ * Check if a heading element is a chapter heading
+ * Identifies common chapter title patterns like:
+ * - Roman numerals: I, II, III, IV, etc.
+ * - Arabic numerals: 1, 2, 3, etc.
+ * - Simple numeric patterns with minimal extra text
+ * @param {Element} heading - Heading element to check
+ * @returns {boolean} True if this looks like a chapter heading
+ */
+function isChapterHeading(heading) {
+    const text = heading.textContent.trim();
+    
+    // Check for Roman numerals (I, II, III, IV, V, etc.)
+    const romanPattern = /^[IVXLCDM]+$/i;
+    if (romanPattern.test(text)) {
+        return true;
+    }
+    
+    // Check for simple Arabic numbers (1, 2, 3, etc.)
+    const arabicPattern = /^\d+$/;
+    if (arabicPattern.test(text)) {
+        return true;
+    }
+    
+    // Check for "Chapter X" or similar patterns
+    const chapterPattern = /^(chapter|capítulo|chapitre|capitolo|kapitel)\s*\d+/i;
+    if (chapterPattern.test(text)) {
+        return true;
+    }
+    
+    // Check for very short headings (likely chapter markers)
+    // But exclude common words that might appear as headings
+    if (text.length <= 5 && text.length > 0) {
+        const commonWords = ['the', 'and', 'but', 'for', 'with', 'about'];
+        if (!commonWords.includes(text.toLowerCase())) {
+            return true;
+        }
+    }
+    
+    return false;
+}
+
+/**
+ * Split content by chapter headings
+ * @param {Element} body - Body element containing the content
+ * @param {string} baseId - Base ID for the chapters
+ * @returns {Array} Array of chapter objects with title, content, and rawHtml
+ */
+function splitContentByHeadings(body, baseId) {
+    const headings = body.querySelectorAll('h1, h2, h3, h4');
+    const chapterHeadings = [];
+    
+    console.log(`[EPUB Parser] Found ${headings.length} total headings in ${baseId}`);
+    
+    // Find all headings that look like chapter markers
+    headings.forEach(heading => {
+        const text = heading.textContent.trim();
+        const isChapter = isChapterHeading(heading);
+        console.log(`[EPUB Parser] Heading: "${text}" (${heading.tagName}) - isChapter: ${isChapter}`);
+        if (isChapter) {
+            chapterHeadings.push(heading);
+        }
+    });
+    
+    console.log(`[EPUB Parser] Found ${chapterHeadings.length} chapter headings`);
+    
+    // If we found fewer than 2 chapter headings, don't split
+    if (chapterHeadings.length < 2) {
+        console.log(`[EPUB Parser] Not enough chapter headings (${chapterHeadings.length}), skipping split`);
+        return [];
+    }
+    
+    const chapters = [];
+    
+    // Split content based on chapter headings
+    for (let i = 0; i < chapterHeadings.length; i++) {
+        const currentHeading = chapterHeadings[i];
+        const nextHeading = chapterHeadings[i + 1];
+        
+        const title = currentHeading.textContent.trim();
+        const contentParts = [];
+        const rawHtmlParts = [];
+        
+        // Collect all elements between this heading and the next
+        let current = currentHeading.nextElementSibling;
+        while (current && current !== nextHeading) {
+            // Skip if we've reached another chapter heading
+            if (chapterHeadings.includes(current)) {
+                break;
+            }
+            
+            const text = current.textContent?.trim();
+            if (text) {
+                contentParts.push(text);
+            }
+            rawHtmlParts.push(current.outerHTML || '');
+            
+            current = current.nextElementSibling;
+        }
+        
+        chapters.push({
+            index: i,
+            title: title,
+            content: contentParts.join('\n\n'),
+            rawHtml: rawHtmlParts.join('\n')
+        });
+    }
+    
+    return chapters;
 }
 
 /**
