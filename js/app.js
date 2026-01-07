@@ -5,14 +5,14 @@
 
 import { parseEpub, textToHtml } from './epub-parser.js';
 import { MarkerManager } from './marker.js';
-import { 
-    fetchModels, 
-    runConcurrentAnalysis 
+import {
+    fetchModels,
+    runConcurrentAnalysis
 } from './ai-service.js';
-import { 
-    getSettings, 
-    saveSettings, 
-    getChapterMarks, 
+import {
+    getSettings,
+    saveSettings,
+    getChapterMarks,
     saveChapterMarks,
     saveReadingPosition,
     getReadingPosition,
@@ -43,47 +43,47 @@ const elements = {
     fileInput: document.getElementById('fileInput'),
     importBtn: document.getElementById('importBtn'),
     importBtnWelcome: document.getElementById('importBtnWelcome'),
-    
+
     // Header
     bookTitle: document.getElementById('bookTitle'),
     toggleSidebarBtn: document.getElementById('toggleSidebarBtn'),
     themeToggleBtn: document.getElementById('themeToggleBtn'),
     themeIcon: document.getElementById('themeIcon'),
-    
+
     // Main content
     mainContent: document.querySelector('.main-content'),
     chaptersPanel: document.querySelector('.chapters-panel'),
     readingPanel: document.querySelector('.reading-panel'),
-    
+
     // Chapters
     chaptersList: document.getElementById('chaptersList'),
     chapterInfo: document.getElementById('chapterInfo'),
-    
+
     // Reading
     readingContent: document.getElementById('readingContent'),
     chapterAnalysisBtn: document.getElementById('chapterAnalysisBtn'),
-    
+
     // Vocabulary Panel
     vocabPanel: document.getElementById('vocabPanel'),
     resizeHandle: document.getElementById('resizeHandle'),
-    
+
     // Tabs
     tabVocabAnalysis: document.getElementById('tabVocabAnalysis'),
     tabChapterAnalysis: document.getElementById('tabChapterAnalysis'),
     vocabAnalysisTab: document.getElementById('vocabAnalysisTab'),
     chapterAnalysisTab: document.getElementById('chapterAnalysisTab'),
-    
+
     // Analysis Content
     vocabAnalysisContent: document.getElementById('vocabAnalysisContent'),
     chapterAnalysisContent: document.getElementById('chapterAnalysisContent'),
-    
+
     // Settings Modal
     settingsBtn: document.getElementById('settingsBtn'),
     settingsModal: document.getElementById('settingsModal'),
     closeSettingsBtn: document.getElementById('closeSettingsBtn'),
     cancelSettingsBtn: document.getElementById('cancelSettingsBtn'),
     saveSettingsBtn: document.getElementById('saveSettingsBtn'),
-    
+
     // Settings Form
     apiUrl: document.getElementById('apiUrl'),
     apiKey: document.getElementById('apiKey'),
@@ -103,13 +103,13 @@ function init() {
 
     // Load layout
     applyLayout(getLayout());
-    
+
     // Load settings
     loadSettingsToForm();
-    
+
     // Event listeners
     setupEventListeners();
-    
+
     console.log('📚 Language Reader initialized');
 }
 
@@ -118,48 +118,48 @@ function setupEventListeners() {
     elements.importBtn.addEventListener('click', () => elements.fileInput.click());
     elements.importBtnWelcome.addEventListener('click', () => elements.fileInput.click());
     elements.fileInput.addEventListener('change', handleFileImport);
-    
+
     // Theme toggle
     elements.themeToggleBtn.addEventListener('click', toggleTheme);
-    
+
     // Sidebar toggle
     if (elements.toggleSidebarBtn) {
         elements.toggleSidebarBtn.addEventListener('click', toggleSidebar);
     }
-    
+
     // Tab switching
     elements.tabVocabAnalysis.addEventListener('click', () => switchTab('vocab-analysis'));
     elements.tabChapterAnalysis.addEventListener('click', () => switchTab('chapter-analysis'));
-    
+
     // Chapter Analysis
     elements.chapterAnalysisBtn.addEventListener('click', handleChapterAnalysis);
-    
+
     // Resize handle
     setupResizeHandle();
-    
+
     // Settings modal
     elements.settingsBtn.addEventListener('click', openSettingsModal);
     elements.closeSettingsBtn.addEventListener('click', closeSettingsModal);
     elements.cancelSettingsBtn.addEventListener('click', closeSettingsModal);
     elements.saveSettingsBtn.addEventListener('click', handleSaveSettings);
-    
+
     // Toggle API key visibility
     elements.toggleKeyBtn.addEventListener('click', () => {
         const type = elements.apiKey.type === 'password' ? 'text' : 'password';
         elements.apiKey.type = type;
         elements.toggleKeyBtn.textContent = type === 'password' ? '👁️' : '🙈';
     });
-    
+
     // Fetch models
     elements.fetchModelsBtn.addEventListener('click', handleFetchModels);
-    
+
     // Close modal on overlay click
     elements.settingsModal.addEventListener('click', (e) => {
         if (e.target === elements.settingsModal) {
             closeSettingsModal();
         }
     });
-    
+
     // Keyboard shortcuts
     document.addEventListener('keydown', (e) => {
         if (e.key === 'Escape') {
@@ -177,30 +177,30 @@ function setupEventListeners() {
 async function handleFileImport(event) {
     const file = event.target.files?.[0];
     if (!file) return;
-    
+
     try {
         showLoading('Parsing EPUB...');
-        
+
         currentBook = await parseEpub(file);
         bookHash = generateBookHash(currentBook.title + currentBook.chapters[0]?.content.substring(0, 100));
-        
+
         // Update UI
         elements.bookTitle.textContent = currentBook.title;
         renderChaptersList();
-        
+
         // Load saved position
         const savedPosition = getReadingPosition(bookHash);
         loadChapter(savedPosition || 0);
-        
+
         hideLoading();
         showNotification(`Successfully loaded: ${currentBook.title}`, 'success');
-        
+
     } catch (error) {
         hideLoading();
         showNotification(`Failed to parse EPUB: ${error.message}`, 'error');
         console.error('EPUB parse error:', error);
     }
-    
+
     // Reset file input
     elements.fileInput.value = '';
 }
@@ -210,14 +210,14 @@ async function handleFileImport(event) {
 // ============================================
 function renderChaptersList() {
     if (!currentBook) return;
-    
+
     elements.chaptersList.innerHTML = currentBook.chapters.map((chapter, index) => `
         <button class="chapter-item ${index === currentChapterIndex ? 'active' : ''}" 
                 data-index="${index}">
             ${chapter.title}
         </button>
     `).join('');
-    
+
     // Add click listeners
     elements.chaptersList.querySelectorAll('.chapter-item').forEach(btn => {
         btn.addEventListener('click', () => {
@@ -231,47 +231,47 @@ function loadChapter(index) {
     if (!currentBook || index < 0 || index >= currentBook.chapters.length) {
         return;
     }
-    
+
     // Save marks from current chapter before switching
     if (markerManager && currentBook) {
         const marks = markerManager.getMarks();
         const currentChapterId = currentBook.chapters[currentChapterIndex].id;
         saveChapterMarks(bookHash, currentChapterId, marks);
     }
-    
+
     currentChapterIndex = index;
     const chapter = currentBook.chapters[index];
-    
+
     // Update UI
     elements.chapterInfo.textContent = chapter.title;
     elements.readingContent.innerHTML = textToHtml(chapter.content);
-    
+
     // Update chapter list active state
     elements.chaptersList.querySelectorAll('.chapter-item').forEach((btn, i) => {
         btn.classList.toggle('active', i === index);
     });
-    
+
     // Enable chapter analysis button
     elements.chapterAnalysisBtn.disabled = false;
-    
+
     // Initialize marker manager
     if (markerManager) {
         markerManager.destroy();
     }
     markerManager = new MarkerManager(elements.readingContent, handleMarksChange);
-    
+
     // Restore saved marks
     const savedMarks = getChapterMarks(bookHash, chapter.id);
     if (savedMarks.length > 0) {
         markerManager.restoreMarks(savedMarks);
     }
-    
+
     // Update vocabulary list
     updateVocabList();
-    
+
     // Save reading position
     saveReadingPosition(bookHash, index);
-    
+
     // Scroll to top
     elements.readingContent.scrollTop = 0;
 }
@@ -279,13 +279,35 @@ function loadChapter(index) {
 // ============================================
 // Vocabulary Management
 // ============================================
+function updateVocabList() {
+    // Clear previous content and show empty state or existing marks
+    const container = elements.vocabAnalysisContent;
+
+    if (!currentBook || !bookHash) {
+        container.innerHTML = '<p class="empty-state">导入书籍后开始学习</p>';
+        return;
+    }
+
+    const chapterId = currentBook.chapters[currentChapterIndex].id;
+    const marks = getChapterMarks(bookHash, chapterId);
+
+    if (marks.length === 0) {
+        container.innerHTML = '<p class="empty-state">选中文本以添加到词汇列表</p>';
+        return;
+    }
+
+    // Display existing marks (we don't re-render cards that were already analyzed)
+    // The cards are added dynamically when words are marked
+    // This just ensures the empty state is removed
+}
+
 async function handleMarksChange(marks, newMark) {
     // Save marks
     if (currentBook && bookHash) {
         const chapterId = currentBook.chapters[currentChapterIndex].id;
         saveChapterMarks(bookHash, chapterId, marks);
     }
-    
+
     // If a new mark was added, analyze it instantly
     if (newMark) {
         await analyzeWordInstantly(newMark);
@@ -295,16 +317,16 @@ async function handleMarksChange(marks, newMark) {
 async function analyzeWordInstantly(markData) {
     // Switch to vocabulary tab if not already there
     switchTab('vocab-analysis');
-    
+
     // Show loading card at the top
     const loadingCard = createWordAnalysisCard(markData.text, null, true);
     prependToVocabAnalysis(loadingCard);
-    
+
     try {
         // Import and call analyzeWordInstant
         const { analyzeWordInstant } = await import('./ai-service.js');
         const result = await analyzeWordInstant(markData.text, markData.context);
-        
+
         // Replace loading card with result
         const resultCard = createWordAnalysisCard(markData.text, result, false);
         loadingCard.replaceWith(resultCard);
@@ -323,13 +345,13 @@ async function analyzeWordInstantly(markData) {
 
 function prependToVocabAnalysis(element) {
     const container = elements.vocabAnalysisContent;
-    
+
     // Remove empty state if present
     const emptyState = container.querySelector('.empty-state');
     if (emptyState) {
         emptyState.remove();
     }
-    
+
     // Prepend new element
     container.insertBefore(element, container.firstChild);
 }
@@ -337,7 +359,7 @@ function prependToVocabAnalysis(element) {
 function createWordAnalysisCard(word, analysis, isLoading) {
     const card = document.createElement('div');
     card.className = 'vocab-card';
-    
+
     if (isLoading) {
         card.innerHTML = `
             <div class="vocab-card-header">
@@ -349,7 +371,7 @@ function createWordAnalysisCard(word, analysis, isLoading) {
         `;
         return card;
     }
-    
+
     card.innerHTML = `
         <div class="vocab-card-header">
             <span class="vocab-card-word">${escapeHtml(analysis.word || word)}</span>
@@ -376,7 +398,7 @@ function createWordAnalysisCard(word, analysis, isLoading) {
             ` : ''}
         </div>
     `;
-    
+
     return card;
 }
 
@@ -385,18 +407,18 @@ function createWordAnalysisCard(word, analysis, isLoading) {
 // ============================================
 async function handleChapterAnalysis() {
     if (!currentBook) return;
-    
+
     const chapter = currentBook.chapters[currentChapterIndex];
-    
+
     // Set loading state
     elements.chapterAnalysisContent.innerHTML = '<p class="loading">Analyzing chapter...</p>';
-    
+
     // Switch to chapter analysis tab
     switchTab('chapter-analysis');
-    
+
     // Import analyzeChapter
     const { analyzeChapter } = await import('./ai-service.js');
-    
+
     try {
         const result = await analyzeChapter(chapter.content, chapter.title);
         renderChapterAnalysis(result);
@@ -411,7 +433,7 @@ function switchTab(tabName) {
     [elements.tabVocabAnalysis, elements.tabChapterAnalysis].forEach(btn => {
         btn.classList.toggle('active', btn.dataset.tab === tabName);
     });
-    
+
     // Update tab content
     elements.vocabAnalysisTab.classList.toggle('active', tabName === 'vocab-analysis');
     elements.chapterAnalysisTab.classList.toggle('active', tabName === 'chapter-analysis');
@@ -423,7 +445,7 @@ function renderChapterAnalysis(result) {
 
 function formatMarkdown(content) {
     if (!content) return '<p class="empty-state">No content</p>';
-    
+
     return content
         // Headers
         .replace(/^#### (.+)$/gm, '<h4>$1</h4>')
@@ -492,41 +514,41 @@ function toggleSidebar() {
 // ============================================
 function setupResizeHandle() {
     let startX, startPanelWidth;
-    
+
     elements.resizeHandle.addEventListener('mousedown', (e) => {
         isResizing = true;
         startX = e.clientX;
         const mainRect = elements.mainContent.getBoundingClientRect();
         startPanelWidth = elements.vocabPanel.getBoundingClientRect().width;
-        
+
         elements.resizeHandle.classList.add('dragging');
         document.body.style.cursor = 'col-resize';
         document.body.style.userSelect = 'none';
     });
-    
+
     document.addEventListener('mousemove', (e) => {
         if (!isResizing) return;
-        
+
         const mainRect = elements.mainContent.getBoundingClientRect();
         const deltaX = startX - e.clientX; // Dragging left increases width
-        
+
         let newPanelWidth = startPanelWidth + deltaX;
         let newPanelPercent = (newPanelWidth / mainRect.width) * 100;
-        
+
         // Constraints (20% to 50%)
         newPanelPercent = Math.max(20, Math.min(50, newPanelPercent));
-        
+
         elements.vocabPanel.style.width = `${newPanelPercent}%`;
     });
-    
+
     document.addEventListener('mouseup', () => {
         if (!isResizing) return;
-        
+
         isResizing = false;
         elements.resizeHandle.classList.remove('dragging');
         document.body.style.cursor = '';
         document.body.style.userSelect = '';
-        
+
         // Save layout
         const mainRect = elements.mainContent.getBoundingClientRect();
         const layout = {
@@ -551,7 +573,7 @@ function loadSettingsToForm() {
     elements.apiKey.value = settings.apiKey || '';
     elements.languageSelect.value = settings.language || '中文';
     elements.readingLevelSelect.value = settings.readingLevel || 'intermediate';
-    
+
     // If model is saved, add it as an option
     if (settings.model) {
         const option = document.createElement('option');
@@ -574,30 +596,30 @@ function closeSettingsModal() {
 async function handleFetchModels() {
     const apiUrl = elements.apiUrl.value.trim();
     const apiKey = elements.apiKey.value.trim();
-    
+
     if (!apiUrl || !apiKey) {
         showNotification('Please enter API URL and API Key first', 'error');
         return;
     }
-    
+
     elements.fetchModelsBtn.disabled = true;
     elements.fetchModelsBtn.textContent = 'Fetching...';
-    
+
     try {
         const models = await fetchModels(apiUrl, apiKey);
-        
+
         // Clear and populate model select
         elements.modelSelect.innerHTML = '<option value="">Select a model...</option>';
-        
+
         models.forEach(model => {
             const option = document.createElement('option');
             option.value = model.id || model.name || model;
             option.textContent = model.id || model.name || model;
             elements.modelSelect.appendChild(option);
         });
-        
+
         showNotification(`Found ${models.length} models`, 'success');
-        
+
     } catch (error) {
         showNotification(`Failed to fetch models: ${error.message}`, 'error');
     } finally {
@@ -614,7 +636,7 @@ function handleSaveSettings() {
         language: elements.languageSelect.value,
         readingLevel: elements.readingLevelSelect.value
     };
-    
+
     if (saveSettings(settings)) {
         showNotification('Settings saved', 'success');
         closeSettingsModal();
@@ -637,7 +659,7 @@ function showNotification(message, type = 'info') {
     // Could be enhanced with toast notifications
     const prefix = type === 'error' ? '❌' : type === 'success' ? '✅' : 'ℹ️';
     console.log(`${prefix} ${message}`);
-    
+
     // Also show as a brief visual indicator
     const indicator = document.createElement('div');
     indicator.style.cssText = `
@@ -654,7 +676,7 @@ function showNotification(message, type = 'info') {
     `;
     indicator.textContent = message;
     document.body.appendChild(indicator);
-    
+
     setTimeout(() => {
         indicator.style.opacity = '0';
         indicator.style.transition = 'opacity 0.3s';
