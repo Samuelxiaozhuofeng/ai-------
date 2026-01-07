@@ -1,11 +1,11 @@
 /**
  * Storage Module
- * Handles localStorage persistence for settings and book data
+ * Handles localStorage persistence for settings and UI preferences
+ * Note: Book data is now stored in IndexedDB (see db.js)
  */
 
 const STORAGE_KEYS = {
   SETTINGS: "language-reader-settings",
-  BOOKS: "language-reader-books",
   THEME: "language-reader-theme",
   LAYOUT: "language-reader-layout",
 };
@@ -16,6 +16,7 @@ const DEFAULT_SETTINGS = {
   apiKey: "",
   model: "",
   language: "中文",
+  readingLevel: "intermediate",
 };
 
 // Default layout settings
@@ -52,117 +53,6 @@ export function saveSettings(settings) {
     console.error("Failed to save settings:", e);
     return false;
   }
-}
-
-/**
- * Get all stored books data
- * @returns {Object} Books data object
- */
-export function getBooks() {
-  try {
-    const stored = localStorage.getItem(STORAGE_KEYS.BOOKS);
-    if (stored) {
-      return JSON.parse(stored);
-    }
-  } catch (e) {
-    console.error("Failed to load books:", e);
-  }
-  return {};
-}
-
-/**
- * Get book data by hash
- * @param {string} bookHash - Book identifier hash
- * @returns {Object|null} Book data or null
- */
-export function getBookData(bookHash) {
-  const books = getBooks();
-  return books[bookHash] || null;
-}
-
-/**
- * Save book data
- * @param {string} bookHash - Book identifier hash
- * @param {Object} bookData - Book data to save
- */
-export function saveBookData(bookHash, bookData) {
-  try {
-    const books = getBooks();
-    books[bookHash] = bookData;
-    localStorage.setItem(STORAGE_KEYS.BOOKS, JSON.stringify(books));
-    return true;
-  } catch (e) {
-    console.error("Failed to save book data:", e);
-    return false;
-  }
-}
-
-/**
- * Save marks for a specific chapter
- * @param {string} bookHash - Book identifier hash
- * @param {string} chapterId - Chapter identifier
- * @param {Array} marks - Array of mark objects
- */
-export function saveChapterMarks(bookHash, chapterId, marks) {
-  const books = getBooks();
-  if (!books[bookHash]) {
-    books[bookHash] = { marks: {} };
-  }
-  if (!books[bookHash].marks) {
-    books[bookHash].marks = {};
-  }
-  books[bookHash].marks[chapterId] = marks;
-  localStorage.setItem(STORAGE_KEYS.BOOKS, JSON.stringify(books));
-}
-
-/**
- * Get marks for a specific chapter
- * @param {string} bookHash - Book identifier hash
- * @param {string} chapterId - Chapter identifier
- * @returns {Array} Array of mark objects
- */
-export function getChapterMarks(bookHash, chapterId) {
-  const books = getBooks();
-  return books[bookHash]?.marks?.[chapterId] || [];
-}
-
-/**
- * Save current reading position
- * @param {string} bookHash - Book identifier hash
- * @param {number} chapterIndex - Current chapter index
- */
-export function saveReadingPosition(bookHash, chapterIndex) {
-  const books = getBooks();
-  if (!books[bookHash]) {
-    books[bookHash] = {};
-  }
-  books[bookHash].currentChapter = chapterIndex;
-  localStorage.setItem(STORAGE_KEYS.BOOKS, JSON.stringify(books));
-}
-
-/**
- * Get current reading position
- * @param {string} bookHash - Book identifier hash
- * @returns {number} Current chapter index or 0
- */
-export function getReadingPosition(bookHash) {
-  const books = getBooks();
-  return books[bookHash]?.currentChapter || 0;
-}
-
-/**
- * Generate a simple hash for book identification
- * @param {string} str - String to hash (book title + first chapter)
- * @returns {string} Hash string
- */
-export function generateBookHash(str) {
-  let hash = 0;
-  for (let i = 0; i < str.length; i++) {
-    const char = str.charCodeAt(i);
-    hash = (hash << 5) - hash + char;
-    hash = hash & hash; // Convert to 32bit integer
-  }
-  return "book-" + Math.abs(hash).toString(16);
 }
 
 /**

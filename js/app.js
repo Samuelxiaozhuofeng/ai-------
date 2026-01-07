@@ -12,39 +12,80 @@ import {
 import {
     getSettings,
     saveSettings,
-    getChapterMarks,
-    saveChapterMarks,
-    saveReadingPosition,
-    getReadingPosition,
-    generateBookHash,
-    getBookData,
-    saveBookData,
     getTheme,
     saveTheme,
     getLayout,
     saveLayout
 } from './storage.js';
+import {
+    initDB,
+    saveBook,
+    getAllBooks,
+    getBook,
+    deleteBook as deleteBookFromDB,
+    renameBook as renameBookInDB,
+    updateReadingProgress,
+    saveChapterMarks,
+    getChapterMarks,
+    generateBookHash
+} from './db.js';
 
 // ============================================
 // State
 // ============================================
+let currentView = 'bookshelf'; // 'bookshelf' | 'reader'
+let viewMode = 'grid';         // 'grid' | 'list'
+let booksLibrary = [];         // Books metadata list
 let currentBook = null;
+let currentBookId = null;
 let currentChapterIndex = 0;
-let bookHash = null;
 let markerManager = null;
 let isAnalysisMode = false;
 let isResizing = false;
+let contextMenuBookId = null;
 
 // ============================================
 // DOM Elements
 // ============================================
 const elements = {
+    // Views
+    bookshelfView: document.getElementById('bookshelfView'),
+    readerView: document.getElementById('readerView'),
+
+    // Bookshelf
+    booksContainer: document.getElementById('booksContainer'),
+    emptyBookshelf: document.getElementById('emptyBookshelf'),
+    importBookBtn: document.getElementById('importBookBtn'),
+    importBtnEmpty: document.getElementById('importBtnEmpty'),
+    gridViewBtn: document.getElementById('gridViewBtn'),
+    listViewBtn: document.getElementById('listViewBtn'),
+    themeToggleBtnShelf: document.getElementById('themeToggleBtnShelf'),
+    themeIconShelf: document.getElementById('themeIconShelf'),
+
+    // Context Menu
+    bookContextMenu: document.getElementById('bookContextMenu'),
+    renameBookBtn: document.getElementById('renameBookBtn'),
+    deleteBookBtn: document.getElementById('deleteBookBtn'),
+
+    // Rename Modal
+    renameModal: document.getElementById('renameModal'),
+    newBookTitle: document.getElementById('newBookTitle'),
+    closeRenameBtn: document.getElementById('closeRenameBtn'),
+    cancelRenameBtn: document.getElementById('cancelRenameBtn'),
+    confirmRenameBtn: document.getElementById('confirmRenameBtn'),
+
+    // Delete Modal
+    deleteModal: document.getElementById('deleteModal'),
+    deleteConfirmText: document.getElementById('deleteConfirmText'),
+    closeDeleteBtn: document.getElementById('closeDeleteBtn'),
+    cancelDeleteBtn: document.getElementById('cancelDeleteBtn'),
+    confirmDeleteBtn: document.getElementById('confirmDeleteBtn'),
+
     // File input
     fileInput: document.getElementById('fileInput'),
-    importBtn: document.getElementById('importBtn'),
-    importBtnWelcome: document.getElementById('importBtnWelcome'),
 
-    // Header
+    // Reader Header
+    backToShelfBtn: document.getElementById('backToShelfBtn'),
     bookTitle: document.getElementById('bookTitle'),
     toggleSidebarBtn: document.getElementById('toggleSidebarBtn'),
     themeToggleBtn: document.getElementById('themeToggleBtn'),
@@ -97,29 +138,75 @@ const elements = {
 // ============================================
 // Initialization
 // ============================================
-function init() {
-    // Load theme
-    initTheme();
+async function init() {
+    try {
+        // Initialize IndexedDB
+        await initDB();
+        console.log('📚 Database initialized');
 
-    // Load layout
-    applyLayout(getLayout());
+        // Load theme
+        initTheme();
 
-    // Load settings
-    loadSettingsToForm();
+        // Load layout
+        applyLayout(getLayout());
 
-    // Event listeners
-    setupEventListeners();
+        // Load settings
+        loadSettingsToForm();
 
-    console.log('📚 Language Reader initialized');
+        // Load books from database
+        booksLibrary = await getAllBooks();
+
+        // Render bookshelf
+        renderBookshelf();
+
+        // Event listeners
+        setupEventListeners();
+
+        console.log('📚 Language Reader initialized');
+    } catch (error) {
+        console.error('Failed to initialize app:', error);
+        showNotification('初始化失败: ' + error.message, 'error');
+    }
 }
 
 function setupEventListeners() {
-    // Import EPUB
-    elements.importBtn.addEventListener('click', () => elements.fileInput.click());
-    elements.importBtnWelcome.addEventListener('click', () => elements.fileInput.click());
+    // Bookshelf: Import buttons
+    elements.importBookBtn.addEventListener('click', () => elements.fileInput.click());
+    elements.importBtnEmpty.addEventListener('click', () => elements.fileInput.click());
     elements.fileInput.addEventListener('change', handleFileImport);
 
-    // Theme toggle
+    // Bookshelf: View toggle
+    elements.gridViewBtn.addEventListener('click', () => setViewMode('grid'));
+    elements.listViewBtn.addEventListener('click', () => setViewMode('list'));
+
+    // Bookshelf: Theme toggle
+    elements.themeToggleBtnShelf.addEventListener('click', toggleTheme);
+
+    // Context menu
+    elements.renameBookBtn.addEventListener('click', openRenameModal);
+    elements.deleteBookBtn.addEventListener('click', openDeleteModal);
+    document.addEventListener('click', hideContextMenu);
+
+    // Rename modal
+    elements.closeRenameBtn.addEventListener('click', closeRenameModal);
+    elements.cancelRenameBtn.addEventListener('click', closeRenameModal);
+    elements.confirmRenameBtn.addEventListener('click', handleRenameBook);
+    elements.renameModal.addEventListener('click', (e) => {
+        if (e.target === elements.renameModal) closeRenameModal();
+    });
+
+    // Delete modal
+    elements.closeDeleteBtn.addEventListener('click', closeDeleteModal);
+    elements.cancelDeleteBtn.addEventListener('click', closeDeleteModal);
+    elements.confirmDeleteBtn.addEventListener('click', handleDeleteBook);
+    elements.deleteModal.addEventListener('click', (e) => {
+        if (e.target === elements.deleteModal) closeDeleteModal();
+    });
+
+    // Reader: Back to shelf
+    elements.backToShelfBtn.addEventListener('click', switchToBookshelf);
+
+    // Reader: Theme toggle
     elements.themeToggleBtn.addEventListener('click', toggleTheme);
 
     // Sidebar toggle
@@ -164,11 +251,283 @@ function setupEventListeners() {
     document.addEventListener('keydown', (e) => {
         if (e.key === 'Escape') {
             closeSettingsModal();
+            closeRenameModal();
+            closeDeleteModal();
+            hideContextMenu();
             if (isAnalysisMode) {
                 exitAnalysisMode();
             }
         }
     });
+}
+
+// ============================================
+// View Switching
+// ============================================
+function switchToBookshelf() {
+    // Save current reading progress
+    if (currentBook && currentBookId) {
+        saveCurrentProgress();
+    }
+
+    currentView = 'bookshelf';
+    elements.bookshelfView.style.display = '';
+    elements.readerView.style.display = 'none';
+
+    // Refresh bookshelf
+    refreshBookshelf();
+}
+
+async function switchToReader(bookId) {
+    try {
+        showLoading('加载书籍...');
+
+        // Load book from database
+        const book = await getBook(bookId);
+        if (!book) {
+            throw new Error('书籍未找到');
+        }
+
+        currentBook = book;
+        currentBookId = bookId;
+        currentChapterIndex = book.currentChapter || 0;
+
+        // Update UI
+        elements.bookTitle.textContent = book.title;
+        renderChaptersList();
+
+        // Load saved chapter
+        loadChapter(currentChapterIndex);
+
+        // Switch view
+        currentView = 'reader';
+        elements.bookshelfView.style.display = 'none';
+        elements.readerView.style.display = '';
+
+        hideLoading();
+    } catch (error) {
+        hideLoading();
+        showNotification('加载书籍失败: ' + error.message, 'error');
+        console.error('Failed to load book:', error);
+    }
+}
+
+// ============================================
+// Bookshelf
+// ============================================
+async function refreshBookshelf() {
+    booksLibrary = await getAllBooks();
+    renderBookshelf();
+}
+
+function renderBookshelf() {
+    if (booksLibrary.length === 0) {
+        elements.emptyBookshelf.style.display = '';
+        return;
+    }
+
+    elements.emptyBookshelf.style.display = 'none';
+
+    if (viewMode === 'grid') {
+        renderBooksGrid();
+    } else {
+        renderBooksList();
+    }
+}
+
+function renderBooksGrid() {
+    const container = elements.booksContainer;
+    container.innerHTML = `
+        <div class="books-grid">
+            ${booksLibrary.map((book, index) => `
+                <div class="book-card" data-book-id="${book.id}" style="animation-delay: ${index * 0.05}s">
+                    <div class="book-cover">
+                        ${book.cover
+            ? `<img src="${book.cover}" alt="${escapeHtml(book.title)}">`
+            : `<div class="book-cover-placeholder">${getInitials(book.title)}</div>`
+        }
+                        <button class="book-menu-btn" data-book-id="${book.id}">⋮</button>
+                    </div>
+                    <div class="book-card-info">
+                        <div class="book-card-title" title="${escapeHtml(book.title)}">${escapeHtml(book.title)}</div>
+                        <div class="book-card-meta">${book.chapterCount} 章</div>
+                        <div class="book-progress-bar">
+                            <div class="book-progress-fill" style="width: ${getProgressPercent(book)}%"></div>
+                        </div>
+                    </div>
+                </div>
+            `).join('')}
+        </div>
+    `;
+
+    // Add event listeners
+    container.querySelectorAll('.book-card').forEach(card => {
+        card.addEventListener('click', (e) => {
+            if (!e.target.classList.contains('book-menu-btn')) {
+                const bookId = card.dataset.bookId;
+                switchToReader(bookId);
+            }
+        });
+    });
+
+    container.querySelectorAll('.book-menu-btn').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            showContextMenu(e, btn.dataset.bookId);
+        });
+    });
+}
+
+function renderBooksList() {
+    const container = elements.booksContainer;
+    container.innerHTML = `
+        <div class="books-list">
+            ${booksLibrary.map((book, index) => `
+                <div class="book-list-item" data-book-id="${book.id}" style="animation-delay: ${index * 0.03}s">
+                    <div class="book-list-cover">
+                        ${book.cover
+            ? `<img src="${book.cover}" alt="${escapeHtml(book.title)}">`
+            : `<div class="book-list-cover-placeholder">${getInitials(book.title)}</div>`
+        }
+                    </div>
+                    <div class="book-list-info">
+                        <div class="book-list-title" title="${escapeHtml(book.title)}">${escapeHtml(book.title)}</div>
+                        <div class="book-list-meta">
+                            <span>${book.chapterCount} 章</span>
+                            <span>•</span>
+                            <span>阅读进度: ${Math.round(getProgressPercent(book))}%</span>
+                            <div class="book-list-progress">
+                                <div class="book-list-progress-fill" style="width: ${getProgressPercent(book)}%"></div>
+                            </div>
+                        </div>
+                    </div>
+                    <button class="book-list-menu-btn" data-book-id="${book.id}">⋮</button>
+                </div>
+            `).join('')}
+        </div>
+    `;
+
+    // Add event listeners
+    container.querySelectorAll('.book-list-item').forEach(item => {
+        item.addEventListener('click', (e) => {
+            if (!e.target.classList.contains('book-list-menu-btn')) {
+                const bookId = item.dataset.bookId;
+                switchToReader(bookId);
+            }
+        });
+    });
+
+    container.querySelectorAll('.book-list-menu-btn').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            showContextMenu(e, btn.dataset.bookId);
+        });
+    });
+}
+
+function setViewMode(mode) {
+    viewMode = mode;
+    elements.gridViewBtn.classList.toggle('active', mode === 'grid');
+    elements.listViewBtn.classList.toggle('active', mode === 'list');
+    renderBookshelf();
+}
+
+function getInitials(title) {
+    return title.charAt(0).toUpperCase();
+}
+
+function getProgressPercent(book) {
+    if (!book.chapterCount || book.chapterCount === 0) return 0;
+    return ((book.currentChapter || 0) / book.chapterCount) * 100;
+}
+
+// ============================================
+// Context Menu
+// ============================================
+function showContextMenu(event, bookId) {
+    contextMenuBookId = bookId;
+    const menu = elements.bookContextMenu;
+
+    menu.style.left = `${event.clientX}px`;
+    menu.style.top = `${event.clientY}px`;
+    menu.classList.add('visible');
+
+    // Ensure menu stays in viewport
+    const rect = menu.getBoundingClientRect();
+    if (rect.right > window.innerWidth) {
+        menu.style.left = `${window.innerWidth - rect.width - 10}px`;
+    }
+    if (rect.bottom > window.innerHeight) {
+        menu.style.top = `${window.innerHeight - rect.height - 10}px`;
+    }
+}
+
+function hideContextMenu() {
+    elements.bookContextMenu.classList.remove('visible');
+}
+
+// ============================================
+// Rename Modal
+// ============================================
+function openRenameModal() {
+    hideContextMenu();
+    const book = booksLibrary.find(b => b.id === contextMenuBookId);
+    if (book) {
+        elements.newBookTitle.value = book.title;
+        elements.renameModal.classList.add('open');
+        elements.newBookTitle.focus();
+        elements.newBookTitle.select();
+    }
+}
+
+function closeRenameModal() {
+    elements.renameModal.classList.remove('open');
+    contextMenuBookId = null;
+}
+
+async function handleRenameBook() {
+    const newTitle = elements.newBookTitle.value.trim();
+    if (!newTitle) {
+        showNotification('请输入书名', 'error');
+        return;
+    }
+
+    try {
+        await renameBookInDB(contextMenuBookId, newTitle);
+        showNotification('重命名成功', 'success');
+        closeRenameModal();
+        await refreshBookshelf();
+    } catch (error) {
+        showNotification('重命名失败: ' + error.message, 'error');
+    }
+}
+
+// ============================================
+// Delete Modal
+// ============================================
+function openDeleteModal() {
+    hideContextMenu();
+    const book = booksLibrary.find(b => b.id === contextMenuBookId);
+    if (book) {
+        elements.deleteConfirmText.textContent = `确定要删除《${book.title}》吗？此操作无法撤销。`;
+        elements.deleteModal.classList.add('open');
+    }
+}
+
+function closeDeleteModal() {
+    elements.deleteModal.classList.remove('open');
+    contextMenuBookId = null;
+}
+
+async function handleDeleteBook() {
+    try {
+        await deleteBookFromDB(contextMenuBookId);
+        showNotification('删除成功', 'success');
+        closeDeleteModal();
+        await refreshBookshelf();
+    } catch (error) {
+        showNotification('删除失败: ' + error.message, 'error');
+    }
 }
 
 // ============================================
@@ -179,25 +538,41 @@ async function handleFileImport(event) {
     if (!file) return;
 
     try {
-        showLoading('Parsing EPUB...');
+        showLoading('正在解析 EPUB...');
 
-        currentBook = await parseEpub(file);
-        bookHash = generateBookHash(currentBook.title + currentBook.chapters[0]?.content.substring(0, 100));
+        const parsedBook = await parseEpub(file);
+        const bookId = generateBookHash(parsedBook.title + parsedBook.chapters[0]?.content.substring(0, 100));
 
-        // Update UI
-        elements.bookTitle.textContent = currentBook.title;
-        renderChaptersList();
+        // Check if book already exists
+        const existingBook = await getBook(bookId);
+        if (existingBook) {
+            hideLoading();
+            showNotification('这本书已经在书架中了', 'info');
+            // Still navigate to it
+            switchToReader(bookId);
+            elements.fileInput.value = '';
+            return;
+        }
 
-        // Load saved position
-        const savedPosition = getReadingPosition(bookHash);
-        loadChapter(savedPosition || 0);
+        // Save to database
+        await saveBook({
+            id: bookId,
+            title: parsedBook.title,
+            cover: parsedBook.cover,
+            chapters: parsedBook.chapters,
+            currentChapter: 0,
+            marks: {}
+        });
 
         hideLoading();
-        showNotification(`Successfully loaded: ${currentBook.title}`, 'success');
+        showNotification(`成功导入: ${parsedBook.title}`, 'success');
+
+        // Switch to reader
+        switchToReader(bookId);
 
     } catch (error) {
         hideLoading();
-        showNotification(`Failed to parse EPUB: ${error.message}`, 'error');
+        showNotification(`解析失败: ${error.message}`, 'error');
         console.error('EPUB parse error:', error);
     }
 
@@ -227,7 +602,7 @@ function renderChaptersList() {
     });
 }
 
-function loadChapter(index) {
+async function loadChapter(index) {
     if (!currentBook || index < 0 || index >= currentBook.chapters.length) {
         return;
     }
@@ -236,7 +611,7 @@ function loadChapter(index) {
     if (markerManager && currentBook) {
         const marks = markerManager.getMarks();
         const currentChapterId = currentBook.chapters[currentChapterIndex].id;
-        saveChapterMarks(bookHash, currentChapterId, marks);
+        await saveChapterMarks(currentBookId, currentChapterId, marks);
     }
 
     currentChapterIndex = index;
@@ -261,7 +636,7 @@ function loadChapter(index) {
     markerManager = new MarkerManager(elements.readingContent, handleMarksChange);
 
     // Restore saved marks
-    const savedMarks = getChapterMarks(bookHash, chapter.id);
+    const savedMarks = await getChapterMarks(currentBookId, chapter.id);
     if (savedMarks.length > 0) {
         markerManager.restoreMarks(savedMarks);
     }
@@ -270,26 +645,35 @@ function loadChapter(index) {
     updateVocabList();
 
     // Save reading position
-    saveReadingPosition(bookHash, index);
+    await updateReadingProgress(currentBookId, index);
 
     // Scroll to top
     elements.readingContent.scrollTop = 0;
 }
 
+async function saveCurrentProgress() {
+    if (markerManager && currentBook && currentBookId) {
+        const marks = markerManager.getMarks();
+        const currentChapterId = currentBook.chapters[currentChapterIndex].id;
+        await saveChapterMarks(currentBookId, currentChapterId, marks);
+        await updateReadingProgress(currentBookId, currentChapterIndex);
+    }
+}
+
 // ============================================
 // Vocabulary Management
 // ============================================
-function updateVocabList() {
+async function updateVocabList() {
     // Clear previous content and show empty state or existing marks
     const container = elements.vocabAnalysisContent;
 
-    if (!currentBook || !bookHash) {
+    if (!currentBook || !currentBookId) {
         container.innerHTML = '<p class="empty-state">导入书籍后开始学习</p>';
         return;
     }
 
     const chapterId = currentBook.chapters[currentChapterIndex].id;
-    const marks = getChapterMarks(bookHash, chapterId);
+    const marks = await getChapterMarks(currentBookId, chapterId);
 
     if (marks.length === 0) {
         container.innerHTML = '<p class="empty-state">选中文本以添加到词汇列表</p>';
@@ -303,9 +687,9 @@ function updateVocabList() {
 
 async function handleMarksChange(marks, newMark) {
     // Save marks
-    if (currentBook && bookHash) {
+    if (currentBook && currentBookId) {
         const chapterId = currentBook.chapters[currentChapterIndex].id;
-        saveChapterMarks(bookHash, chapterId, marks);
+        await saveChapterMarks(currentBookId, chapterId, marks);
     }
 
     // If a new mark was added, analyze it instantly
@@ -502,7 +886,9 @@ function toggleTheme() {
 
 function applyTheme(theme) {
     document.documentElement.setAttribute('data-theme', theme);
-    elements.themeIcon.textContent = theme === 'dark' ? '🌙' : '☀️';
+    const icon = theme === 'dark' ? '🌙' : '☀️';
+    elements.themeIcon.textContent = icon;
+    elements.themeIconShelf.textContent = icon;
 }
 
 function toggleSidebar() {
@@ -691,6 +1077,10 @@ function showLoading(message) {
 
 function hideLoading() {
     // Hide loading overlay
+}
+
+function exitAnalysisMode() {
+    isAnalysisMode = false;
 }
 
 // ============================================
