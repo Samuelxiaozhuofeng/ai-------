@@ -27,6 +27,10 @@ import {
     updateReadingProgress,
     saveChapterMarks,
     getChapterMarks,
+    saveChapterAnalysis,
+    getChapterAnalysis,
+    saveVocabCards,
+    getVocabCards,
     generateBookHash
 } from './db.js';
 
@@ -43,6 +47,7 @@ let markerManager = null;
 let isAnalysisMode = false;
 let isResizing = false;
 let contextMenuBookId = null;
+let currentChapterVocabCards = []; // Vocab cards for current chapter
 
 // ============================================
 // DOM Elements
@@ -607,11 +612,15 @@ async function loadChapter(index) {
         return;
     }
 
-    // Save marks from current chapter before switching
-    if (markerManager && currentBook) {
+    // Save data from current chapter before switching
+    if (markerManager && currentBook && currentBookId) {
         const marks = markerManager.getMarks();
         const currentChapterId = currentBook.chapters[currentChapterIndex].id;
         await saveChapterMarks(currentBookId, currentChapterId, marks);
+        // Save current vocab cards
+        if (currentChapterVocabCards.length > 0) {
+            await saveVocabCards(currentBookId, currentChapterId, currentChapterVocabCards);
+        }
     }
 
     currentChapterIndex = index;
@@ -641,8 +650,11 @@ async function loadChapter(index) {
         markerManager.restoreMarks(savedMarks);
     }
 
-    // Update vocabulary list
-    updateVocabList();
+    // Load and display vocab cards for this chapter
+    await loadChapterVocabCards();
+
+    // Load and display chapter analysis for this chapter
+    await loadChapterAnalysisContent();
 
     // Save reading position
     await updateReadingProgress(currentBookId, index);
@@ -656,6 +668,10 @@ async function saveCurrentProgress() {
         const marks = markerManager.getMarks();
         const currentChapterId = currentBook.chapters[currentChapterIndex].id;
         await saveChapterMarks(currentBookId, currentChapterId, marks);
+        // Save vocab cards
+        if (currentChapterVocabCards.length > 0) {
+            await saveVocabCards(currentBookId, currentChapterId, currentChapterVocabCards);
+        }
         await updateReadingProgress(currentBookId, currentChapterIndex);
     }
 }
@@ -663,26 +679,57 @@ async function saveCurrentProgress() {
 // ============================================
 // Vocabulary Management
 // ============================================
-async function updateVocabList() {
-    // Clear previous content and show empty state or existing marks
+/**
+ * Load and display vocab cards for the current chapter
+ */
+async function loadChapterVocabCards() {
     const container = elements.vocabAnalysisContent;
+    container.innerHTML = ''; // Clear previous content
 
     if (!currentBook || !currentBookId) {
         container.innerHTML = '<p class="empty-state">导入书籍后开始学习</p>';
+        currentChapterVocabCards = [];
         return;
     }
 
     const chapterId = currentBook.chapters[currentChapterIndex].id;
-    const marks = await getChapterMarks(currentBookId, chapterId);
 
-    if (marks.length === 0) {
+    // Load saved vocab cards for this chapter
+    currentChapterVocabCards = await getVocabCards(currentBookId, chapterId);
+
+    if (currentChapterVocabCards.length === 0) {
         container.innerHTML = '<p class="empty-state">选中文本以添加到词汇列表</p>';
         return;
     }
 
-    // Display existing marks (we don't re-render cards that were already analyzed)
-    // The cards are added dynamically when words are marked
-    // This just ensures the empty state is removed
+    // Render saved vocab cards
+    currentChapterVocabCards.forEach(cardData => {
+        const card = createWordAnalysisCard(cardData.word, cardData.analysis, false);
+        container.appendChild(card);
+    });
+}
+
+/**
+ * Load and display chapter analysis for the current chapter
+ */
+async function loadChapterAnalysisContent() {
+    const container = elements.chapterAnalysisContent;
+
+    if (!currentBook || !currentBookId) {
+        container.innerHTML = '<p class="empty-state">点击 "Chapter Analysis" 获取章节概览</p>';
+        return;
+    }
+
+    const chapterId = currentBook.chapters[currentChapterIndex].id;
+
+    // Load saved analysis for this chapter
+    const savedAnalysis = await getChapterAnalysis(currentBookId, chapterId);
+
+    if (savedAnalysis && savedAnalysis.content) {
+        container.innerHTML = formatMarkdown(savedAnalysis.content);
+    } else {
+        container.innerHTML = '<p class="empty-state">点击 "Chapter Analysis" 获取章节概览</p>';
+    }
 }
 
 async function handleMarksChange(marks, newMark) {
@@ -714,6 +761,21 @@ async function analyzeWordInstantly(markData) {
         // Replace loading card with result
         const resultCard = createWordAnalysisCard(markData.text, result, false);
         loadingCard.replaceWith(resultCard);
+
+        // Save the vocab card to the chapter's vocab cards
+        const cardData = {
+            word: markData.text,
+            analysis: result,
+            context: markData.context,
+            createdAt: new Date().toISOString()
+        };
+        currentChapterVocabCards.unshift(cardData); // Add to beginning
+
+        // Save to database
+        if (currentBook && currentBookId) {
+            const chapterId = currentBook.chapters[currentChapterIndex].id;
+            await saveVocabCards(currentBookId, chapterId, currentChapterVocabCards);
+        }
     } catch (error) {
         console.error('Instant analysis error:', error);
         loadingCard.innerHTML = `
@@ -806,6 +868,11 @@ async function handleChapterAnalysis() {
     try {
         const result = await analyzeChapter(chapter.content, chapter.title);
         renderChapterAnalysis(result);
+
+        // Save the analysis to database
+        if (currentBookId) {
+            await saveChapterAnalysis(currentBookId, chapter.id, result);
+        }
     } catch (error) {
         elements.chapterAnalysisContent.innerHTML = `<p class="text-error">Error: ${escapeHtml(error.message)}</p>`;
         showNotification(`分析失败: ${error.message}`, 'error');

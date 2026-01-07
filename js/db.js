@@ -289,6 +289,107 @@ export async function getChapterMarks(bookId, chapterId) {
 }
 
 /**
+ * Save chapter analysis for a specific chapter
+ * @param {string} bookId - Book identifier
+ * @param {string} chapterId - Chapter identifier
+ * @param {string} analysis - Analysis content (markdown)
+ * @returns {Promise<boolean>}
+ */
+export async function saveChapterAnalysis(bookId, chapterId, analysis) {
+    return new Promise(async (resolve, reject) => {
+        try {
+            const book = await getBook(bookId);
+            if (!book) {
+                reject(new Error('Book not found'));
+                return;
+            }
+
+            if (!book.chapterAnalysis) {
+                book.chapterAnalysis = {};
+            }
+            book.chapterAnalysis[chapterId] = {
+                content: analysis,
+                updatedAt: new Date().toISOString()
+            };
+
+            const transaction = db.transaction([STORE_BOOKS], 'readwrite');
+            const store = transaction.objectStore(STORE_BOOKS);
+            const request = store.put(book);
+
+            request.onsuccess = () => resolve(true);
+            request.onerror = () => reject(request.error);
+        } catch (error) {
+            reject(error);
+        }
+    });
+}
+
+/**
+ * Get chapter analysis for a specific chapter
+ * @param {string} bookId - Book identifier
+ * @param {string} chapterId - Chapter identifier
+ * @returns {Promise<Object|null>}
+ */
+export async function getChapterAnalysis(bookId, chapterId) {
+    try {
+        const book = await getBook(bookId);
+        return book?.chapterAnalysis?.[chapterId] || null;
+    } catch (error) {
+        console.error('Failed to get chapter analysis:', error);
+        return null;
+    }
+}
+
+/**
+ * Save vocabulary analysis cards for a specific chapter
+ * @param {string} bookId - Book identifier
+ * @param {string} chapterId - Chapter identifier
+ * @param {Array} vocabCards - Array of vocabulary analysis card data
+ * @returns {Promise<boolean>}
+ */
+export async function saveVocabCards(bookId, chapterId, vocabCards) {
+    return new Promise(async (resolve, reject) => {
+        try {
+            const book = await getBook(bookId);
+            if (!book) {
+                reject(new Error('Book not found'));
+                return;
+            }
+
+            if (!book.vocabCards) {
+                book.vocabCards = {};
+            }
+            book.vocabCards[chapterId] = vocabCards;
+
+            const transaction = db.transaction([STORE_BOOKS], 'readwrite');
+            const store = transaction.objectStore(STORE_BOOKS);
+            const request = store.put(book);
+
+            request.onsuccess = () => resolve(true);
+            request.onerror = () => reject(request.error);
+        } catch (error) {
+            reject(error);
+        }
+    });
+}
+
+/**
+ * Get vocabulary analysis cards for a specific chapter
+ * @param {string} bookId - Book identifier
+ * @param {string} chapterId - Chapter identifier
+ * @returns {Promise<Array>}
+ */
+export async function getVocabCards(bookId, chapterId) {
+    try {
+        const book = await getBook(bookId);
+        return book?.vocabCards?.[chapterId] || [];
+    } catch (error) {
+        console.error('Failed to get vocab cards:', error);
+        return [];
+    }
+}
+
+/**
  * Generate a simple hash for book identification
  * @param {string} str - String to hash (book title + first chapter)
  * @returns {string} Hash string
@@ -302,3 +403,4 @@ export function generateBookHash(str) {
     }
     return 'book-' + Math.abs(hash).toString(16);
 }
+
