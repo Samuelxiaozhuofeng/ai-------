@@ -15,8 +15,16 @@ import {
     getTheme,
     saveTheme,
     getLayout,
-    saveLayout
+    saveLayout,
+    getAnkiSettings,
+    saveAnkiSettings
 } from './storage.js';
+import {
+    getDeckNames,
+    getModelNames,
+    getModelFieldNames,
+    addNote
+} from './anki-service.js';
 import {
     initDB,
     saveBook,
@@ -48,6 +56,7 @@ let isAnalysisMode = false;
 let isResizing = false;
 let contextMenuBookId = null;
 let currentChapterVocabCards = []; // Vocab cards for current chapter
+let isAutoAnkiEnabled = false;     // Auto add to Anki flag
 
 // ============================================
 // DOM Elements
@@ -137,7 +146,26 @@ const elements = {
     modelSelect: document.getElementById('modelSelect'),
     fetchModelsBtn: document.getElementById('fetchModelsBtn'),
     languageSelect: document.getElementById('languageSelect'),
-    readingLevelSelect: document.getElementById('readingLevelSelect')
+    readingLevelSelect: document.getElementById('readingLevelSelect'),
+
+    // Settings Tabs
+    settingsTabAI: document.getElementById('settingsTabAI'),
+    settingsTabAnki: document.getElementById('settingsTabAnki'),
+    aiSettingsContent: document.getElementById('aiSettingsContent'),
+    ankiSettingsContent: document.getElementById('ankiSettingsContent'),
+
+    // Anki Settings Form
+    ankiDeckSelect: document.getElementById('ankiDeckSelect'),
+    ankiModelSelect: document.getElementById('ankiModelSelect'),
+    refreshAnkiBtn: document.getElementById('refreshAnkiBtn'),
+    fieldWord: document.getElementById('fieldWord'),
+    fieldContext: document.getElementById('fieldContext'),
+    fieldMeaning: document.getElementById('fieldMeaning'),
+    fieldUsage: document.getElementById('fieldUsage'),
+    fieldContextualMeaning: document.getElementById('fieldContextualMeaning'),
+
+    // Auto Anki Toggle
+    autoAnkiToggle: document.getElementById('autoAnkiToggle')
 };
 
 // ============================================
@@ -264,6 +292,22 @@ function setupEventListeners() {
             }
         }
     });
+
+    // Settings tabs switching
+    elements.settingsTabAI.addEventListener('click', () => switchSettingsTab('ai'));
+    elements.settingsTabAnki.addEventListener('click', () => switchSettingsTab('anki'));
+
+    // Anki settings
+    elements.refreshAnkiBtn.addEventListener('click', refreshAnkiOptions);
+    elements.ankiModelSelect.addEventListener('change', handleAnkiModelChange);
+
+    // Auto Anki toggle
+    elements.autoAnkiToggle.addEventListener('change', handleAutoAnkiToggle);
+
+    // Load Auto Anki state from storage
+    const ankiSettings = getAnkiSettings();
+    isAutoAnkiEnabled = ankiSettings.autoAddToAnki || false;
+    elements.autoAnkiToggle.checked = isAutoAnkiEnabled;
 }
 
 // ============================================
@@ -704,7 +748,7 @@ async function loadChapterVocabCards() {
 
     // Render saved vocab cards
     currentChapterVocabCards.forEach(cardData => {
-        const card = createWordAnalysisCard(cardData.word, cardData.analysis, false);
+        const card = createWordAnalysisCard(cardData.word, cardData.analysis, false, cardData.context);
         container.appendChild(card);
     });
 }
@@ -759,7 +803,7 @@ async function analyzeWordInstantly(markData) {
         const result = await analyzeWordInstant(markData.text, markData.context);
 
         // Replace loading card with result
-        const resultCard = createWordAnalysisCard(markData.text, result, false);
+        const resultCard = createWordAnalysisCard(markData.text, result, false, markData.context);
         loadingCard.replaceWith(resultCard);
 
         // Save the vocab card to the chapter's vocab cards
@@ -775,6 +819,14 @@ async function analyzeWordInstantly(markData) {
         if (currentBook && currentBookId) {
             const chapterId = currentBook.chapters[currentChapterIndex].id;
             await saveVocabCards(currentBookId, chapterId, currentChapterVocabCards);
+        }
+
+        // Auto add to Anki if enabled
+        if (isAutoAnkiEnabled) {
+            const ankiBtn = resultCard.querySelector('.vocab-card-anki-btn');
+            if (ankiBtn) {
+                handleAddToAnki(resultCard, ankiBtn);
+            }
         }
     } catch (error) {
         console.error('Instant analysis error:', error);
@@ -802,7 +854,7 @@ function prependToVocabAnalysis(element) {
     container.insertBefore(element, container.firstChild);
 }
 
-function createWordAnalysisCard(word, analysis, isLoading) {
+function createWordAnalysisCard(word, analysis, isLoading, context = null) {
     const card = document.createElement('div');
     card.className = 'vocab-card';
 
@@ -817,6 +869,13 @@ function createWordAnalysisCard(word, analysis, isLoading) {
         `;
         return card;
     }
+
+    // Store data for Anki export
+    card.dataset.word = word;
+    card.dataset.context = context?.currentSentence || '';
+    card.dataset.meaning = analysis.meaning || '';
+    card.dataset.usage = analysis.usage || '';
+    card.dataset.contextualMeaning = analysis.contextualMeaning || '';
 
     card.innerHTML = `
         <div class="vocab-card-header">
@@ -843,7 +902,17 @@ function createWordAnalysisCard(word, analysis, isLoading) {
                 </div>
             ` : ''}
         </div>
+        <div class="vocab-card-footer">
+            <button class="vocab-card-anki-btn" title="添加到 Anki">+</button>
+        </div>
     `;
+
+    // Add click handler for Anki button
+    const ankiBtn = card.querySelector('.vocab-card-anki-btn');
+    ankiBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        handleAddToAnki(card, ankiBtn);
+    });
 
     return card;
 }
@@ -1081,23 +1150,6 @@ async function handleFetchModels() {
     }
 }
 
-function handleSaveSettings() {
-    const settings = {
-        apiUrl: elements.apiUrl.value.trim(),
-        apiKey: elements.apiKey.value.trim(),
-        model: elements.modelSelect.value,
-        language: elements.languageSelect.value,
-        readingLevel: elements.readingLevelSelect.value
-    };
-
-    if (saveSettings(settings)) {
-        showNotification('Settings saved', 'success');
-        closeSettingsModal();
-    } else {
-        showNotification('Failed to save settings', 'error');
-    }
-}
-
 // ============================================
 // Utilities
 // ============================================
@@ -1148,6 +1200,258 @@ function hideLoading() {
 
 function exitAnalysisMode() {
     isAnalysisMode = false;
+}
+
+// ============================================
+// Anki Integration
+// ============================================
+
+/**
+ * Switch between AI and Anki settings tabs
+ */
+function switchSettingsTab(tabName) {
+    // Update tab buttons
+    elements.settingsTabAI.classList.toggle('active', tabName === 'ai');
+    elements.settingsTabAnki.classList.toggle('active', tabName === 'anki');
+
+    // Update tab content
+    elements.aiSettingsContent.classList.toggle('active', tabName === 'ai');
+    elements.ankiSettingsContent.classList.toggle('active', tabName === 'anki');
+
+    // If switching to Anki tab, try to load options
+    if (tabName === 'anki') {
+        refreshAnkiOptions();
+    }
+}
+
+/**
+ * Refresh Anki deck and model options
+ */
+async function refreshAnkiOptions() {
+    const ankiSettings = getAnkiSettings();
+
+    try {
+        // Fetch decks
+        const decks = await getDeckNames();
+        elements.ankiDeckSelect.innerHTML = '<option value="">选择牌组...</option>';
+        decks.forEach(deck => {
+            const option = document.createElement('option');
+            option.value = deck;
+            option.textContent = deck;
+            if (deck === ankiSettings.deckName) {
+                option.selected = true;
+            }
+            elements.ankiDeckSelect.appendChild(option);
+        });
+
+        // Fetch models
+        const models = await getModelNames();
+        elements.ankiModelSelect.innerHTML = '<option value="">选择笔记类型...</option>';
+        models.forEach(model => {
+            const option = document.createElement('option');
+            option.value = model;
+            option.textContent = model;
+            if (model === ankiSettings.modelName) {
+                option.selected = true;
+            }
+            elements.ankiModelSelect.appendChild(option);
+        });
+
+        // If model is already selected, load its fields
+        if (ankiSettings.modelName) {
+            await loadModelFields(ankiSettings.modelName, ankiSettings.fieldMapping);
+        }
+
+    } catch (error) {
+        console.error('Failed to refresh Anki options:', error);
+        showNotification(error.message, 'error');
+    }
+}
+
+/**
+ * Handle model selection change - load fields
+ */
+async function handleAnkiModelChange() {
+    const modelName = elements.ankiModelSelect.value;
+    if (modelName) {
+        await loadModelFields(modelName, {});
+    } else {
+        // Clear field selects
+        clearFieldSelects();
+    }
+}
+
+/**
+ * Load fields for a specific model
+ */
+async function loadModelFields(modelName, currentMapping = {}) {
+    try {
+        const fields = await getModelFieldNames(modelName);
+        const fieldSelects = [
+            elements.fieldWord,
+            elements.fieldContext,
+            elements.fieldMeaning,
+            elements.fieldUsage,
+            elements.fieldContextualMeaning
+        ];
+        const mappingKeys = ['word', 'context', 'meaning', 'usage', 'contextualMeaning'];
+
+        fieldSelects.forEach((select, index) => {
+            select.innerHTML = '<option value="">不映射</option>';
+            fields.forEach(field => {
+                const option = document.createElement('option');
+                option.value = field;
+                option.textContent = field;
+                if (currentMapping[mappingKeys[index]] === field) {
+                    option.selected = true;
+                }
+                select.appendChild(option);
+            });
+        });
+
+    } catch (error) {
+        console.error('Failed to load model fields:', error);
+        showNotification(error.message, 'error');
+    }
+}
+
+/**
+ * Clear all field select dropdowns
+ */
+function clearFieldSelects() {
+    const fieldSelects = [
+        elements.fieldWord,
+        elements.fieldContext,
+        elements.fieldMeaning,
+        elements.fieldUsage,
+        elements.fieldContextualMeaning
+    ];
+    fieldSelects.forEach(select => {
+        select.innerHTML = '<option value="">不映射</option>';
+    });
+}
+
+/**
+ * Handle adding a vocab card to Anki
+ */
+async function handleAddToAnki(card, button) {
+    // Check if already added
+    if (button.classList.contains('added')) {
+        return;
+    }
+
+    const ankiSettings = getAnkiSettings();
+
+    // Validate settings
+    if (!ankiSettings.deckName || !ankiSettings.modelName) {
+        showNotification('请先在设置中配置 Anki 牌组和笔记类型', 'error');
+        return;
+    }
+
+    // Get card data
+    const word = card.dataset.word || '';
+    const context = card.dataset.context || '';
+    const meaning = card.dataset.meaning || '';
+    const usage = card.dataset.usage || '';
+    const contextualMeaning = card.dataset.contextualMeaning || '';
+
+    // Build fields object based on mapping
+    const fields = {};
+    const { fieldMapping } = ankiSettings;
+
+    if (fieldMapping.word && word) {
+        fields[fieldMapping.word] = word;
+    }
+    if (fieldMapping.context && context) {
+        fields[fieldMapping.context] = context;
+    }
+    if (fieldMapping.meaning && meaning) {
+        fields[fieldMapping.meaning] = meaning;
+    }
+    if (fieldMapping.usage && usage) {
+        fields[fieldMapping.usage] = usage;
+    }
+    if (fieldMapping.contextualMeaning && contextualMeaning) {
+        fields[fieldMapping.contextualMeaning] = contextualMeaning;
+    }
+
+    // Check if any fields are mapped
+    if (Object.keys(fields).length === 0) {
+        showNotification('请先在设置中配置字段映射', 'error');
+        return;
+    }
+
+    // Show loading state
+    button.classList.add('loading');
+    button.textContent = '';
+
+    try {
+        await addNote(ankiSettings.deckName, ankiSettings.modelName, fields);
+
+        // Show success state
+        button.classList.remove('loading');
+        button.classList.add('added');
+        button.textContent = '✓';
+        button.title = '已添加到 Anki';
+
+    } catch (error) {
+        console.error('Failed to add to Anki:', error);
+        button.classList.remove('loading');
+        button.textContent = '+';
+        showNotification(error.message, 'error');
+    }
+}
+
+/**
+ * Handle Auto Anki toggle change
+ */
+function handleAutoAnkiToggle() {
+    isAutoAnkiEnabled = elements.autoAnkiToggle.checked;
+
+    // Save to settings
+    const ankiSettings = getAnkiSettings();
+    ankiSettings.autoAddToAnki = isAutoAnkiEnabled;
+    saveAnkiSettings(ankiSettings);
+
+    if (isAutoAnkiEnabled) {
+        showNotification('自动添加到 Anki 已开启', 'success');
+    }
+}
+
+/**
+ * Save both AI and Anki settings
+ */
+function handleSaveSettings() {
+    // Save AI settings
+    const settings = {
+        apiUrl: elements.apiUrl.value.trim(),
+        apiKey: elements.apiKey.value.trim(),
+        model: elements.modelSelect.value,
+        language: elements.languageSelect.value,
+        readingLevel: elements.readingLevelSelect.value
+    };
+
+    if (saveSettings(settings)) {
+        // Also save Anki settings
+        const ankiSettings = {
+            deckName: elements.ankiDeckSelect.value,
+            modelName: elements.ankiModelSelect.value,
+            fieldMapping: {
+                word: elements.fieldWord.value,
+                context: elements.fieldContext.value,
+                meaning: elements.fieldMeaning.value,
+                usage: elements.fieldUsage.value,
+                contextualMeaning: elements.fieldContextualMeaning.value
+            },
+            autoAddToAnki: isAutoAnkiEnabled
+        };
+        saveAnkiSettings(ankiSettings);
+
+        showNotification('设置已保存', 'success');
+        closeSettingsModal();
+    } else {
+        showNotification('保存设置失败', 'error');
+    }
 }
 
 // ============================================

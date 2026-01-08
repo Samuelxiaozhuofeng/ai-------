@@ -8,6 +8,7 @@ const STORAGE_KEYS = {
   SETTINGS: "language-reader-settings",
   THEME: "language-reader-theme",
   LAYOUT: "language-reader-layout",
+  ANKI_SETTINGS: "language-reader-anki-settings",
 };
 
 // Default settings
@@ -107,6 +108,59 @@ export function saveLayout(layout) {
     return true;
   } catch (e) {
     console.error("Failed to save layout:", e);
+    return false;
+  }
+}
+
+// Default Anki settings
+const DEFAULT_ANKI_SETTINGS = {
+  deckName: '',
+  modelName: '',
+  fieldMapping: {
+    word: '',           // 词汇
+    context: '',        // 上下文（currentSentence）
+    meaning: '',        // 含义
+    usage: '',          // 用法
+    contextualMeaning: '' // 上下文含义
+  },
+  autoAddToAnki: false
+};
+
+/**
+ * Get Anki settings from localStorage
+ * @returns {Object} Anki settings object
+ */
+export function getAnkiSettings() {
+  try {
+    const stored = localStorage.getItem(STORAGE_KEYS.ANKI_SETTINGS);
+    if (stored) {
+      const parsed = JSON.parse(stored);
+      // Merge with defaults to ensure all fields exist
+      return {
+        ...DEFAULT_ANKI_SETTINGS,
+        ...parsed,
+        fieldMapping: {
+          ...DEFAULT_ANKI_SETTINGS.fieldMapping,
+          ...(parsed.fieldMapping || {})
+        }
+      };
+    }
+  } catch (e) {
+    console.error("Failed to load Anki settings:", e);
+  }
+  return { ...DEFAULT_ANKI_SETTINGS };
+}
+
+/**
+ * Save Anki settings to localStorage
+ * @param {Object} settings - Anki settings to save
+ */
+export function saveAnkiSettings(settings) {
+  try {
+    localStorage.setItem(STORAGE_KEYS.ANKI_SETTINGS, JSON.stringify(settings));
+    return true;
+  } catch (e) {
+    console.error("Failed to save Anki settings:", e);
     return false;
   }
 }

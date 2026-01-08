@@ -126,6 +126,11 @@
               <button class="tab-btn" data-tab="chapter-analysis" id="tabChapterAnalysis">
                 <span>📖</span> Chapter
               </button>
+              <label class="auto-anki-toggle" title="自动添加到 Anki">
+                <input type="checkbox" id="autoAnkiToggle">
+                <span class="toggle-slider"></span>
+                <span class="toggle-label">Auto</span>
+              </label>
             </div>
           </div>
 
@@ -148,64 +153,143 @@
 
     <!-- Settings Modal -->
     <div class="modal-overlay" id="settingsModal">
-      <div class="modal">
+      <div class="modal modal-large">
         <div class="modal-header">
-          <h2>⚙️ AI Settings</h2>
+          <h2>⚙️ 设置</h2>
           <button class="btn btn-ghost btn-small" id="closeSettingsBtn">
             ✕
           </button>
         </div>
+        <!-- Settings Tabs -->
+        <div class="settings-tabs">
+          <button class="settings-tab active" data-settings-tab="ai" id="settingsTabAI">
+            🤖 AI 设置
+          </button>
+          <button class="settings-tab" data-settings-tab="anki" id="settingsTabAnki">
+            📝 Anki 设置
+          </button>
+        </div>
         <div class="modal-body">
-          <div class="form-group">
-            <label for="apiUrl">API URL</label>
-            <input type="url" id="apiUrl" placeholder="https://api.openai.com/v1" class="input" />
-          </div>
-          <div class="form-group">
-            <label for="apiKey">API Key</label>
-            <div class="input-group">
-              <input type="password" id="apiKey" placeholder="sk-..." class="input" />
-              <button class="btn btn-ghost" id="toggleKeyBtn">👁️</button>
+          <!-- AI Settings Tab Content -->
+          <div class="settings-tab-content active" id="aiSettingsContent">
+            <div class="form-group">
+              <label for="apiUrl">API URL</label>
+              <input type="url" id="apiUrl" placeholder="https://api.openai.com/v1" class="input" />
             </div>
-          </div>
-          <div class="form-group">
-            <label for="modelSelect">Model</label>
-            <div class="input-group">
-              <select id="modelSelect" class="input">
-                <option value="">Select a model...</option>
+            <div class="form-group">
+              <label for="apiKey">API Key</label>
+              <div class="input-group">
+                <input type="password" id="apiKey" placeholder="sk-..." class="input" />
+                <button class="btn btn-ghost" id="toggleKeyBtn">👁️</button>
+              </div>
+            </div>
+            <div class="form-group">
+              <label for="modelSelect">Model</label>
+              <div class="input-group">
+                <select id="modelSelect" class="input">
+                  <option value="">Select a model...</option>
+                </select>
+                <button class="btn btn-secondary" id="fetchModelsBtn">
+                  Fetch Models
+                </button>
+              </div>
+            </div>
+            <div class="form-group">
+              <label for="languageSelect">Explanation Language</label>
+              <select id="languageSelect" class="input">
+                <option value="中文" selected>中文</option>
+                <option value="English">English</option>
+                <option value="Español">Español</option>
+                <option value="Français">Français</option>
+                <option value="Deutsch">Deutsch</option>
+                <option value="日本語">日本語</option>
+                <option value="한국어">한국어</option>
               </select>
-              <button class="btn btn-secondary" id="fetchModelsBtn">
-                Fetch Models
-              </button>
+            </div>
+            <div class="form-group">
+              <label for="readingLevelSelect">Reading Level</label>
+              <select id="readingLevelSelect" class="input">
+                <option value="beginner">初级 (Beginner)</option>
+                <option value="intermediate" selected>中级 (Intermediate)</option>
+                <option value="advanced">高级 (Advanced)</option>
+              </select>
+              <small style="color: var(--text-secondary); font-size: 12px; margin-top: 4px; display: block;">
+                用于调整章节分析的复杂度
+              </small>
             </div>
           </div>
-          <div class="form-group">
-            <label for="languageSelect">Explanation Language</label>
-            <select id="languageSelect" class="input">
-              <option value="中文" selected>中文</option>
-              <option value="English">English</option>
-              <option value="Español">Español</option>
-              <option value="Français">Français</option>
-              <option value="Deutsch">Deutsch</option>
-              <option value="日本語">日本語</option>
-              <option value="한국어">한국어</option>
-            </select>
-          </div>
-          <div class="form-group">
-            <label for="readingLevelSelect">Reading Level</label>
-            <select id="readingLevelSelect" class="input">
-              <option value="beginner">初级 (Beginner)</option>
-              <option value="intermediate" selected>中级 (Intermediate)</option>
-              <option value="advanced">高级 (Advanced)</option>
-            </select>
-            <small style="color: var(--text-secondary); font-size: 12px; margin-top: 4px; display: block;">
-              用于调整章节分析的复杂度
-            </small>
+
+          <!-- Anki Settings Tab Content -->
+          <div class="settings-tab-content" id="ankiSettingsContent">
+            <p class="settings-hint">
+              请确保 Anki 已启动并安装了 <a href="https://ankiweb.net/shared/info/2055492159" target="_blank">AnkiConnect</a> 插件
+            </p>
+            <div class="form-group">
+              <label for="ankiDeckSelect">牌组</label>
+              <div class="input-group">
+                <select id="ankiDeckSelect" class="input">
+                  <option value="">选择牌组...</option>
+                </select>
+                <button class="btn btn-secondary" id="refreshAnkiBtn">
+                  🔄 刷新
+                </button>
+              </div>
+            </div>
+            <div class="form-group">
+              <label for="ankiModelSelect">笔记类型</label>
+              <select id="ankiModelSelect" class="input">
+                <option value="">选择笔记类型...</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label>字段映射</label>
+              <small style="color: var(--text-secondary); font-size: 12px; margin-bottom: 8px; display: block;">
+                将词汇数据映射到 Anki 笔记字段
+              </small>
+              <div class="field-mapping">
+                <div class="field-mapping-row">
+                  <span class="field-label">词汇</span>
+                  <span class="field-arrow">→</span>
+                  <select id="fieldWord" class="input field-select">
+                    <option value="">不映射</option>
+                  </select>
+                </div>
+                <div class="field-mapping-row">
+                  <span class="field-label">上下文</span>
+                  <span class="field-arrow">→</span>
+                  <select id="fieldContext" class="input field-select">
+                    <option value="">不映射</option>
+                  </select>
+                </div>
+                <div class="field-mapping-row">
+                  <span class="field-label">含义</span>
+                  <span class="field-arrow">→</span>
+                  <select id="fieldMeaning" class="input field-select">
+                    <option value="">不映射</option>
+                  </select>
+                </div>
+                <div class="field-mapping-row">
+                  <span class="field-label">用法</span>
+                  <span class="field-arrow">→</span>
+                  <select id="fieldUsage" class="input field-select">
+                    <option value="">不映射</option>
+                  </select>
+                </div>
+                <div class="field-mapping-row">
+                  <span class="field-label">上下文含义</span>
+                  <span class="field-arrow">→</span>
+                  <select id="fieldContextualMeaning" class="input field-select">
+                    <option value="">不映射</option>
+                  </select>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
         <div class="modal-footer">
-          <button class="btn btn-ghost" id="cancelSettingsBtn">Cancel</button>
+          <button class="btn btn-ghost" id="cancelSettingsBtn">取消</button>
           <button class="btn btn-primary" id="saveSettingsBtn">
-            Save Settings
+            保存设置
           </button>
         </div>
       </div>
