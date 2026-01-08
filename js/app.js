@@ -3,12 +3,22 @@
  * Coordinates all modules and handles UI interactions
  */
 
-import { parseEpub, textToHtml } from './epub-parser.js';
-import { MarkerManager } from './marker.js';
+import { parseEpub } from './epub-parser.js';
+import { normalizeWord, statusToClass, WORD_STATUSES } from './word-status.js';
+import { getSyncStatus, setSyncStatusListener, startBackgroundSync, stopBackgroundSync, syncNow } from './sync-service.js';
 import {
     fetchModels,
     runConcurrentAnalysis
 } from './ai-service.js';
+import {
+    ensureGlobalLearningCard,
+    getDueCards,
+    getReviewStats,
+    previewNextIntervals,
+    removeBookFromGlobalLearningCard,
+    reviewCard,
+    upsertGlobalAnalysis
+} from './srs-service.js';
 import {
     getSettings,
     saveSettings,
@@ -33,30 +43,49 @@ import {
     deleteBook as deleteBookFromDB,
     renameBook as renameBookInDB,
     updateReadingProgress,
-    saveChapterMarks,
-    getChapterMarks,
+    getReadingProgress as getPageProgress,
+    updatePageProgress,
     saveChapterAnalysis,
     getChapterAnalysis,
-    saveVocabCards,
-    getVocabCards,
+    listVocabulary,
+    upsertVocabularyItem,
+    upsertVocabularyItems,
+    deleteVocabularyItem,
+    listGlobalVocab,
     generateBookHash
 } from './db.js';
 
 // ============================================
 // State
 // ============================================
-let currentView = 'bookshelf'; // 'bookshelf' | 'reader'
+let currentView = 'bookshelf'; // 'bookshelf' | 'reader' | 'review'
 let viewMode = 'grid';         // 'grid' | 'list'
 let booksLibrary = [];         // Books metadata list
 let currentBook = null;
 let currentBookId = null;
 let currentChapterIndex = 0;
-let markerManager = null;
 let isAnalysisMode = false;
 let isResizing = false;
 let contextMenuBookId = null;
-let currentChapterVocabCards = []; // Vocab cards for current chapter
-let isAutoAnkiEnabled = false;     // Auto add to Anki flag
+let isAutoStudyEnabled = false;
+let selectedWordEl = null;
+let isPageFlipMode = true;
+let chapterPages = [];
+let currentPageIndex = 0;
+let vocabularyByWord = new Map(); // normalizedWord -> vocab entry
+let globalVocabByWord = new Map(); // normalizedWord -> global vocab entry (learning cards)
+let vocabFilter = WORD_STATUSES.LEARNING; // 'seen' | 'learning' | 'known' | 'all'
+let selectedWord = null; // normalized
+let selectedWordDisplay = null; // original casing
+let selectedWordContext = null;
+let selectedWordAnalysis = null;
+let clickedWordsOnPage = new Set();
+let encounterCountByWord = new Map(); // normalizedWord -> number (per session)
+
+// Review session state
+let reviewQueue = [];
+let reviewIndex = 0;
+let currentReviewItem = null;
 
 // ============================================
 // DOM Elements
@@ -65,6 +94,7 @@ const elements = {
     // Views
     bookshelfView: document.getElementById('bookshelfView'),
     readerView: document.getElementById('readerView'),
+    reviewView: document.getElementById('reviewView'),
 
     // Bookshelf
     booksContainer: document.getElementById('booksContainer'),
@@ -73,6 +103,7 @@ const elements = {
     importBtnEmpty: document.getElementById('importBtnEmpty'),
     gridViewBtn: document.getElementById('gridViewBtn'),
     listViewBtn: document.getElementById('listViewBtn'),
+    reviewBtn: document.getElementById('reviewBtn'),
     themeToggleBtnShelf: document.getElementById('themeToggleBtnShelf'),
     themeIconShelf: document.getElementById('themeIconShelf'),
 
@@ -104,19 +135,30 @@ const elements = {
     toggleSidebarBtn: document.getElementById('toggleSidebarBtn'),
     themeToggleBtn: document.getElementById('themeToggleBtn'),
     themeIcon: document.getElementById('themeIcon'),
+    syncIndicator: document.getElementById('syncIndicator'),
 
     // Main content
     mainContent: document.querySelector('.main-content'),
-    chaptersPanel: document.querySelector('.chapters-panel'),
     readingPanel: document.querySelector('.reading-panel'),
 
-    // Chapters
-    chaptersList: document.getElementById('chaptersList'),
+    // Chapters / Progress
+    chapterSelectBtn: document.getElementById('chapterSelectBtn'),
     chapterInfo: document.getElementById('chapterInfo'),
+    chapterProgressFill: document.getElementById('chapterProgressFill'),
+    bookProgressPercent: document.getElementById('bookProgressPercent'),
+    bookProgressText: document.getElementById('bookProgressText'),
+
+    // Chapter Select Modal
+    chapterSelectModal: document.getElementById('chapterSelectModal'),
+    closeChapterSelectBtn: document.getElementById('closeChapterSelectBtn'),
+    chapterSelectList: document.getElementById('chapterSelectList'),
 
     // Reading
     readingContent: document.getElementById('readingContent'),
     chapterAnalysisBtn: document.getElementById('chapterAnalysisBtn'),
+    prevPageBtn: document.getElementById('prevPageBtn'),
+    nextPageBtn: document.getElementById('nextPageBtn'),
+    pageIndicator: document.getElementById('pageIndicator'),
 
     // Vocabulary Panel
     vocabPanel: document.getElementById('vocabPanel'),
@@ -147,12 +189,18 @@ const elements = {
     fetchModelsBtn: document.getElementById('fetchModelsBtn'),
     languageSelect: document.getElementById('languageSelect'),
     readingLevelSelect: document.getElementById('readingLevelSelect'),
+    backendUrl: document.getElementById('backendUrl'),
+    syncEnabledToggle: document.getElementById('syncEnabledToggle'),
+    syncNowBtn: document.getElementById('syncNowBtn'),
+    syncStatusText: document.getElementById('syncStatusText'),
 
     // Settings Tabs
     settingsTabAI: document.getElementById('settingsTabAI'),
     settingsTabAnki: document.getElementById('settingsTabAnki'),
+    settingsTabSync: document.getElementById('settingsTabSync'),
     aiSettingsContent: document.getElementById('aiSettingsContent'),
     ankiSettingsContent: document.getElementById('ankiSettingsContent'),
+    syncSettingsContent: document.getElementById('syncSettingsContent'),
 
     // Anki Settings Form
     ankiDeckSelect: document.getElementById('ankiDeckSelect'),
@@ -165,7 +213,27 @@ const elements = {
     fieldContextualMeaning: document.getElementById('fieldContextualMeaning'),
 
     // Auto Anki Toggle
-    autoAnkiToggle: document.getElementById('autoAnkiToggle')
+    autoAnkiToggle: document.getElementById('autoAnkiToggle'),
+
+    // Review
+    backFromReviewBtn: document.getElementById('backFromReviewBtn'),
+    reviewStats: document.getElementById('reviewStats'),
+    reviewEmpty: document.getElementById('reviewEmpty'),
+    reviewFinishBtn: document.getElementById('reviewFinishBtn'),
+    reviewSession: document.getElementById('reviewSession'),
+    reviewWord: document.getElementById('reviewWord'),
+    reviewMeaning: document.getElementById('reviewMeaning'),
+    reviewUsage: document.getElementById('reviewUsage'),
+    reviewContext: document.getElementById('reviewContext'),
+    reviewContextualMeaning: document.getElementById('reviewContextualMeaning'),
+    reviewAgainBtn: document.getElementById('reviewAgainBtn'),
+    reviewHardBtn: document.getElementById('reviewHardBtn'),
+    reviewGoodBtn: document.getElementById('reviewGoodBtn'),
+    reviewEasyBtn: document.getElementById('reviewEasyBtn'),
+    reviewAgainInterval: document.getElementById('reviewAgainInterval'),
+    reviewHardInterval: document.getElementById('reviewHardInterval'),
+    reviewGoodInterval: document.getElementById('reviewGoodInterval'),
+    reviewEasyInterval: document.getElementById('reviewEasyInterval')
 };
 
 // ============================================
@@ -176,6 +244,8 @@ async function init() {
         // Initialize IndexedDB
         await initDB();
         console.log('📚 Database initialized');
+
+        await refreshGlobalVocabCache();
 
         // Load theme
         initTheme();
@@ -194,6 +264,10 @@ async function init() {
 
         // Event listeners
         setupEventListeners();
+
+        // Sync indicator
+        setSyncStatusListener(updateSyncUI);
+        updateSyncUI(getSyncStatus());
 
         console.log('📚 Language Reader initialized');
     } catch (error) {
@@ -214,6 +288,9 @@ function setupEventListeners() {
 
     // Bookshelf: Theme toggle
     elements.themeToggleBtnShelf.addEventListener('click', toggleTheme);
+
+    // Bookshelf: Review
+    elements.reviewBtn?.addEventListener('click', () => switchToReview());
 
     // Context menu
     elements.renameBookBtn.addEventListener('click', openRenameModal);
@@ -239,6 +316,16 @@ function setupEventListeners() {
     // Reader: Back to shelf
     elements.backToShelfBtn.addEventListener('click', switchToBookshelf);
 
+    // Reader: Clickable words (event delegation)
+    elements.readingContent.addEventListener('click', handleReadingWordClick);
+
+    // Chapter select
+    elements.chapterSelectBtn?.addEventListener('click', openChapterSelectModal);
+    elements.closeChapterSelectBtn?.addEventListener('click', closeChapterSelectModal);
+    elements.chapterSelectModal?.addEventListener('click', (e) => {
+        if (e.target === elements.chapterSelectModal) closeChapterSelectModal();
+    });
+
     // Reader: Theme toggle
     elements.themeToggleBtn.addEventListener('click', toggleTheme);
 
@@ -251,8 +338,24 @@ function setupEventListeners() {
     elements.tabVocabAnalysis.addEventListener('click', () => switchTab('vocab-analysis'));
     elements.tabChapterAnalysis.addEventListener('click', () => switchTab('chapter-analysis'));
 
+    // Vocabulary panel actions (delegation)
+    elements.vocabAnalysisContent.addEventListener('click', handleVocabPanelClick);
+
     // Chapter Analysis
     elements.chapterAnalysisBtn.addEventListener('click', handleChapterAnalysis);
+
+    // Page navigation
+    elements.prevPageBtn?.addEventListener('click', () => goToPreviousPage());
+    elements.nextPageBtn?.addEventListener('click', () => goToNextPage());
+
+    // Review
+    elements.backFromReviewBtn?.addEventListener('click', switchToBookshelf);
+    elements.reviewFinishBtn?.addEventListener('click', switchToBookshelf);
+    [elements.reviewAgainBtn, elements.reviewHardBtn, elements.reviewGoodBtn, elements.reviewEasyBtn]
+        .filter(Boolean)
+        .forEach((btn) => {
+            btn.addEventListener('click', () => submitRating(btn.dataset.rating));
+        });
 
     // Resize handle
     setupResizeHandle();
@@ -282,13 +385,39 @@ function setupEventListeners() {
 
     // Keyboard shortcuts
     document.addEventListener('keydown', (e) => {
+        // Avoid hijacking arrows while typing in inputs
+        const tag = e.target?.tagName?.toLowerCase?.() || '';
+        const isTypingContext = tag === 'input' || tag === 'textarea' || e.target?.isContentEditable;
+
         if (e.key === 'Escape') {
             closeSettingsModal();
             closeRenameModal();
             closeDeleteModal();
+            closeChapterSelectModal();
             hideContextMenu();
+            if (currentView === 'review') {
+                switchToBookshelf();
+            }
             if (isAnalysisMode) {
                 exitAnalysisMode();
+            }
+            return;
+        }
+
+        if (!isTypingContext && currentView === 'review') {
+            if (e.key === '1') return void submitRating('again');
+            if (e.key === '2') return void submitRating('hard');
+            if (e.key === '3') return void submitRating('good');
+            if (e.key === '4') return void submitRating('easy');
+        }
+
+        if (!isTypingContext && currentView === 'reader' && isPageFlipMode) {
+            if (e.key === 'ArrowLeft') {
+                e.preventDefault();
+                goToPreviousPage();
+            } else if (e.key === 'ArrowRight') {
+                e.preventDefault();
+                goToNextPage();
             }
         }
     });
@@ -296,32 +425,861 @@ function setupEventListeners() {
     // Settings tabs switching
     elements.settingsTabAI.addEventListener('click', () => switchSettingsTab('ai'));
     elements.settingsTabAnki.addEventListener('click', () => switchSettingsTab('anki'));
+    elements.settingsTabSync.addEventListener('click', () => switchSettingsTab('sync'));
 
     // Anki settings
     elements.refreshAnkiBtn.addEventListener('click', refreshAnkiOptions);
     elements.ankiModelSelect.addEventListener('change', handleAnkiModelChange);
 
+    // Sync settings
+    elements.syncNowBtn.addEventListener('click', () => syncNow(currentBookId));
+
     // Auto Anki toggle
     elements.autoAnkiToggle.addEventListener('change', handleAutoAnkiToggle);
 
-    // Load Auto Anki state from storage
+    // Load Auto Study state from storage
     const ankiSettings = getAnkiSettings();
-    isAutoAnkiEnabled = ankiSettings.autoAddToAnki || false;
-    elements.autoAnkiToggle.checked = isAutoAnkiEnabled;
+    isAutoStudyEnabled = ankiSettings.autoAddToStudy ?? ankiSettings.autoAddToAnki ?? false;
+    elements.autoAnkiToggle.checked = isAutoStudyEnabled;
+}
+
+// ============================================
+// Word Tokenization & Rendering
+// ============================================
+let WORD_REGEX = null;
+function getWordRegex() {
+    if (WORD_REGEX) return WORD_REGEX;
+    try {
+        WORD_REGEX = new RegExp("[\\p{L}\\p{N}]+(?:[’'\\-][\\p{L}\\p{N}]+)*", "gu");
+    } catch {
+        WORD_REGEX = /[A-Za-z0-9\u00C0-\u024F\u1E00-\u1EFF]+(?:[’'\-][A-Za-z0-9\u00C0-\u024F\u1E00-\u1EFF]+)*/g;
+    }
+    return WORD_REGEX;
+}
+
+function buildTokenizedChapterWrapper(text) {
+    const wrapper = document.createElement('div');
+    const paragraphs = (text || '').split(/\n\n+/).filter(p => p.trim());
+
+    paragraphs.forEach((paragraphText) => {
+        const p = document.createElement('p');
+        tokenizeParagraphInto(p, paragraphText);
+        wrapper.appendChild(p);
+    });
+
+    if (paragraphs.length === 0) {
+        wrapper.innerHTML = `
+            <div class="welcome-state">
+              <div class="welcome-icon">📖</div>
+              <h2>No content</h2>
+              <p>该章节内容为空</p>
+            </div>
+        `;
+    }
+
+    return wrapper;
+}
+
+function renderTokenizedChapterContent(container, text) {
+    container.innerHTML = '';
+    container.appendChild(buildTokenizedChapterWrapper(text));
+}
+
+function tokenizeParagraphInto(paragraphEl, paragraphText) {
+    const regex = getWordRegex();
+    regex.lastIndex = 0;
+
+    let lastIndex = 0;
+    let match;
+    while ((match = regex.exec(paragraphText)) !== null) {
+        const wordStart = match.index;
+        const wordText = match[0];
+        const normalized = normalizeWord(wordText);
+
+        if (wordStart > lastIndex) {
+            paragraphEl.appendChild(document.createTextNode(paragraphText.slice(lastIndex, wordStart)));
+        }
+
+        if (normalized) {
+            const span = document.createElement('span');
+            span.className = 'word';
+            span.dataset.word = normalized;
+            span.textContent = wordText;
+            paragraphEl.appendChild(span);
+        } else {
+            paragraphEl.appendChild(document.createTextNode(wordText));
+        }
+
+        lastIndex = wordStart + wordText.length;
+    }
+
+    if (lastIndex < paragraphText.length) {
+        paragraphEl.appendChild(document.createTextNode(paragraphText.slice(lastIndex)));
+    }
+}
+
+async function handleReadingWordClick(event) {
+    const target = event.target.closest?.('.word');
+    if (!target || !elements.readingContent.contains(target)) return;
+
+    if (selectedWordEl) selectedWordEl.classList.remove('word-selected');
+    selectedWordEl = target;
+    selectedWordEl.classList.add('word-selected');
+
+    selectedWord = target.dataset.word || null;
+    selectedWordDisplay = target.textContent || selectedWord;
+    selectedWordContext = extractContextForWordSpan(target);
+    if (selectedWord) clickedWordsOnPage.add(selectedWord);
+
+    const existing = selectedWord ? vocabularyByWord.get(selectedWord) : null;
+    selectedWordAnalysis = existing?.analysis || null;
+
+    switchTab('vocab-analysis');
+
+    // Auto-study behavior:
+    // - Auto ON: clicking a new word marks it as learning
+    // - Auto OFF: clicking a seen word still marks it as learning
+    const effectiveStatus = selectedWord ? getEffectiveWordStatus(selectedWord) : WORD_STATUSES.NEW;
+    const shouldAutoStudy = selectedWord && (effectiveStatus === WORD_STATUSES.SEEN || (effectiveStatus === WORD_STATUSES.NEW && isAutoStudyEnabled));
+    if (shouldAutoStudy) {
+        await setSelectedWordStatus(WORD_STATUSES.LEARNING, { trigger: 'click' });
+    }
+
+    // Auto-analyze when AI is configured (especially useful when a word enters learning).
+    if (selectedWord && !selectedWordAnalysis && (shouldAutoStudy || effectiveStatus === WORD_STATUSES.NEW)) {
+        const settings = getSettings();
+        if (settings.apiUrl && settings.apiKey && settings.model) {
+            await analyzeSelectedWord();
+        }
+    }
+
+    renderVocabularyPanel();
+}
+
+function getWordStatus(normalizedWord) {
+    return vocabularyByWord.get(normalizedWord)?.status || WORD_STATUSES.NEW;
+}
+
+function getEffectiveWordStatus(normalizedWord) {
+    const local = vocabularyByWord.get(normalizedWord)?.status || null;
+    if (local) return local;
+    const global = globalVocabByWord.get(normalizedWord) || null;
+    if (global?.status === 'learning') return WORD_STATUSES.LEARNING;
+    return WORD_STATUSES.NEW;
+}
+
+function applyWordStatusesToContainer(container) {
+    container.querySelectorAll('.word').forEach((el) => {
+        const normalizedWord = el.dataset.word || '';
+        const status = normalizedWord ? getEffectiveWordStatus(normalizedWord) : WORD_STATUSES.NEW;
+        el.classList.remove('word-new', 'word-seen', 'word-learning', 'word-known');
+        el.classList.add(statusToClass(status));
+    });
+}
+
+function extractContextForWordSpan(wordEl) {
+    const paragraphText = wordEl.closest('p')?.textContent?.trim() || '';
+    return {
+        previousSentence: '',
+        currentSentence: paragraphText,
+        nextSentence: '',
+        fullContext: paragraphText
+    };
+}
+
+async function refreshVocabularyCache() {
+    if (!currentBookId) {
+        vocabularyByWord = new Map();
+        return;
+    }
+
+    const items = await listVocabulary(currentBookId, null);
+    vocabularyByWord = new Map(items.map((item) => [item.word, item]));
+}
+
+async function refreshGlobalVocabCache() {
+    try {
+        const items = await listGlobalVocab();
+        globalVocabByWord = new Map(items.map((item) => [item.normalizedWord || item.id, item]));
+    } catch (error) {
+        console.warn('Failed to refresh global vocabulary cache:', error);
+        globalVocabByWord = new Map();
+    }
+}
+
+function getVocabCounts() {
+    let learning = 0;
+    let seen = 0;
+    let known = 0;
+    vocabularyByWord.forEach((item) => {
+        if (item.status === WORD_STATUSES.LEARNING) learning += 1;
+        if (item.status === WORD_STATUSES.SEEN) seen += 1;
+        if (item.status === WORD_STATUSES.KNOWN) known += 1;
+    });
+    return { learning, seen, known, all: learning + seen + known };
+}
+
+function renderVocabularyPanel() {
+    const container = elements.vocabAnalysisContent;
+
+    if (!currentBookId) {
+        container.innerHTML = '<p class="empty-state">导入书籍后开始学习</p>';
+        return;
+    }
+
+    const counts = getVocabCounts();
+    const activeFilter = vocabFilter || WORD_STATUSES.LEARNING;
+
+    const items = Array.from(vocabularyByWord.values())
+        .filter((item) => activeFilter === 'all' ? true : item.status === activeFilter)
+        .sort((a, b) => new Date(b.updatedAt || b.createdAt || 0) - new Date(a.updatedAt || a.createdAt || 0));
+
+    const selectedStatus = selectedWord ? getEffectiveWordStatus(selectedWord) : WORD_STATUSES.NEW;
+    const selectedEntry = selectedWord ? vocabularyByWord.get(selectedWord) : null;
+
+    container.innerHTML = `
+        <div class="vocab-panel-controls">
+          <div class="vocab-filters">
+            <button class="vocab-filter ${activeFilter === 'all' ? 'active' : ''}" data-action="filter" data-filter="all">
+              All <span class="vocab-count">${counts.all}</span>
+            </button>
+            <button class="vocab-filter ${activeFilter === WORD_STATUSES.LEARNING ? 'active' : ''}" data-action="filter" data-filter="${WORD_STATUSES.LEARNING}">
+              Learning <span class="vocab-count">${counts.learning}</span>
+            </button>
+            <button class="vocab-filter ${activeFilter === WORD_STATUSES.SEEN ? 'active' : ''}" data-action="filter" data-filter="${WORD_STATUSES.SEEN}">
+              Seen <span class="vocab-count">${counts.seen}</span>
+            </button>
+            <button class="vocab-filter ${activeFilter === WORD_STATUSES.KNOWN ? 'active' : ''}" data-action="filter" data-filter="${WORD_STATUSES.KNOWN}">
+              Known <span class="vocab-count">${counts.known}</span>
+            </button>
+          </div>
+        </div>
+
+        <div class="vocab-selected-panel">
+          ${selectedWord ? `
+            <div class="vocab-selected-header">
+              <div class="vocab-selected-left">
+                <span class="status-dot status-dot-${selectedStatus}"></span>
+                <span class="vocab-selected-word">${escapeHtml(selectedWordDisplay || selectedWord)}</span>
+                <span class="vocab-selected-status">${escapeHtml(selectedStatus)}</span>
+              </div>
+              <div class="vocab-selected-actions">
+                ${selectedStatus !== WORD_STATUSES.LEARNING ? `<button class="btn btn-secondary btn-small" data-action="set-status" data-status="${WORD_STATUSES.LEARNING}">加入学习</button>` : ''}
+                ${selectedStatus !== WORD_STATUSES.KNOWN ? `<button class="btn btn-secondary btn-small" data-action="set-status" data-status="${WORD_STATUSES.KNOWN}">标记已掌握</button>` : ''}
+                ${selectedStatus !== WORD_STATUSES.NEW ? `<button class="btn btn-ghost btn-small" data-action="set-status" data-status="${WORD_STATUSES.NEW}">移除</button>` : ''}
+                ${!selectedWordAnalysis ? `<button class="btn btn-secondary btn-small" data-action="analyze">分析</button>` : ''}
+              </div>
+            </div>
+            <div class="vocab-selected-body" id="selectedWordAnalysisSlot">
+              ${!selectedWordAnalysis ? `<p class="empty-state">点击“分析”获取解释</p>` : ''}
+            </div>
+          ` : `
+            <p class="empty-state">点击正文中的单词开始</p>
+          `}
+        </div>
+
+        <div class="vocab-list" id="vocabList">
+          ${items.length === 0 ? `<p class="empty-state">暂无词汇</p>` : items.map((item) => `
+            <div class="vocab-list-item" data-word="${escapeHtml(item.word)}">
+              <button class="vocab-list-main" data-action="select" data-word="${escapeHtml(item.word)}">
+                <span class="status-dot status-dot-${escapeHtml(item.status)}"></span>
+                <span class="vocab-list-word">${escapeHtml(item.displayWord || item.word)}</span>
+              </button>
+              <div class="vocab-list-actions">
+                <button class="btn btn-ghost btn-small" data-action="toggle-status" data-word="${escapeHtml(item.word)}">↻</button>
+              </div>
+            </div>
+          `).join('')}
+        </div>
+    `;
+
+    if (selectedWord && selectedWordAnalysis) {
+        const slot = container.querySelector('#selectedWordAnalysisSlot');
+        if (slot) {
+            slot.innerHTML = '';
+            const card = createWordAnalysisCard(selectedWordDisplay || selectedWord, selectedWordAnalysis, false, selectedEntry?.context || selectedWordContext);
+            slot.appendChild(card);
+        }
+    }
+}
+
+async function analyzeSelectedWord() {
+    if (!selectedWord || !selectedWordDisplay) return;
+
+    try {
+        const { analyzeWordInstant } = await import('./ai-service.js');
+        const result = await analyzeWordInstant(selectedWordDisplay, selectedWordContext || { fullContext: '' });
+        selectedWordAnalysis = result;
+
+        // Persist analysis for saved words; keep it in-memory for new words until user saves.
+        const existing = vocabularyByWord.get(selectedWord);
+        if (existing) {
+            const updated = await upsertVocabularyItem({
+                ...existing,
+                bookId: currentBookId,
+                word: selectedWord,
+                displayWord: existing.displayWord || selectedWordDisplay,
+                analysis: result,
+                context: existing.context || selectedWordContext,
+                sourceChapterId: existing.sourceChapterId || currentBook?.chapters?.[currentChapterIndex]?.id || null
+            });
+            vocabularyByWord.set(updated.word, updated);
+        }
+
+        if (getEffectiveWordStatus(selectedWord) === WORD_STATUSES.LEARNING) {
+            const updatedGlobal = await upsertGlobalAnalysis(
+                selectedWord,
+                result,
+                selectedWordContext?.currentSentence || null,
+                selectedWordDisplay
+            );
+            if (updatedGlobal) {
+                globalVocabByWord.set(updatedGlobal.normalizedWord || updatedGlobal.id, updatedGlobal);
+            }
+        }
+    } catch (error) {
+        console.error('Instant analysis error:', error);
+        showNotification('分析失败: ' + error.message, 'error');
+    } finally {
+        renderVocabularyPanel();
+    }
+}
+
+function cssEscape(value) {
+    if (window.CSS && typeof window.CSS.escape === 'function') return window.CSS.escape(value);
+    return String(value).replace(/"/g, '\\"');
+}
+
+function selectWordFromVocabulary(normalizedWord) {
+    const entry = vocabularyByWord.get(normalizedWord) || null;
+    selectedWord = normalizedWord;
+    selectedWordDisplay = entry?.displayWord || normalizedWord;
+    selectedWordContext = entry?.context || null;
+    selectedWordAnalysis = entry?.analysis || null;
+
+    // Try to highlight the first occurrence on the current page.
+    const el = elements.readingContent.querySelector(`.word[data-word="${cssEscape(normalizedWord)}"]`);
+    if (el) {
+        if (selectedWordEl) selectedWordEl.classList.remove('word-selected');
+        selectedWordEl = el;
+        selectedWordEl.classList.add('word-selected');
+        selectedWordEl.scrollIntoView({ block: 'center' });
+    }
+}
+
+async function setSelectedWordStatus(nextStatus, options = {}) {
+    if (!currentBookId || !selectedWord) return;
+
+    const existingEntry = vocabularyByWord.get(selectedWord) || null;
+    const prevStatus = existingEntry?.status || WORD_STATUSES.NEW;
+
+    if (nextStatus === WORD_STATUSES.NEW) {
+        if (prevStatus === WORD_STATUSES.LEARNING) {
+            await removeBookFromGlobalLearningCard(selectedWord, currentBookId);
+            await refreshGlobalVocabCache();
+        }
+        await deleteVocabularyItem(currentBookId, selectedWord);
+        vocabularyByWord.delete(selectedWord);
+        applyWordStatusesToContainer(elements.readingContent);
+        renderVocabularyPanel();
+        return;
+    }
+
+    const existing = existingEntry || {};
+    const updated = await upsertVocabularyItem({
+        ...existing,
+        bookId: currentBookId,
+        word: selectedWord,
+        displayWord: existing.displayWord || selectedWordDisplay || selectedWord,
+        status: nextStatus,
+        context: existing.context || selectedWordContext || null,
+        analysis: existing.analysis || selectedWordAnalysis || null,
+        sourceChapterId: existing.sourceChapterId || currentBook?.chapters?.[currentChapterIndex]?.id || null
+    });
+
+    vocabularyByWord.set(updated.word, updated);
+
+    if (nextStatus === WORD_STATUSES.LEARNING) {
+        const global = await ensureGlobalLearningCard({
+            normalizedWord: updated.word,
+            displayWord: updated.displayWord || selectedWordDisplay || updated.word,
+            bookId: currentBookId,
+            analysis: updated.analysis || selectedWordAnalysis || null,
+            contextSentence: updated?.context?.currentSentence || selectedWordContext?.currentSentence || null
+        });
+        globalVocabByWord.set(global.normalizedWord || global.id, global);
+    } else if (prevStatus === WORD_STATUSES.LEARNING) {
+        await removeBookFromGlobalLearningCard(updated.word, currentBookId);
+        await refreshGlobalVocabCache();
+    }
+
+    applyWordStatusesToContainer(elements.readingContent);
+    renderVocabularyPanel();
+
+    if (options?.trigger === 'click' && nextStatus === WORD_STATUSES.LEARNING) {
+        showNotification('已加入学习', 'success');
+    }
+}
+
+async function toggleVocabularyStatus(normalizedWord) {
+    const entry = vocabularyByWord.get(normalizedWord);
+    if (!entry) return;
+
+    const prevStatus = entry.status;
+    const nextStatus =
+        entry.status === WORD_STATUSES.LEARNING ? WORD_STATUSES.KNOWN
+            : entry.status === WORD_STATUSES.SEEN ? WORD_STATUSES.LEARNING
+                : WORD_STATUSES.LEARNING;
+
+    const updated = await upsertVocabularyItem({ ...entry, bookId: currentBookId, word: normalizedWord, status: nextStatus });
+    if (nextStatus === WORD_STATUSES.LEARNING) {
+        const global = await ensureGlobalLearningCard({
+            normalizedWord: updated.word,
+            displayWord: updated.displayWord || updated.word,
+            bookId: currentBookId,
+            analysis: updated.analysis || null,
+            contextSentence: updated?.context?.currentSentence || null
+        });
+        globalVocabByWord.set(global.normalizedWord || global.id, global);
+    } else if (prevStatus === WORD_STATUSES.LEARNING) {
+        await removeBookFromGlobalLearningCard(updated.word, currentBookId);
+        await refreshGlobalVocabCache();
+    }
+    await refreshVocabularyCache();
+    applyWordStatusesToContainer(elements.readingContent);
+    renderVocabularyPanel();
+}
+
+async function handleVocabPanelClick(event) {
+    const actionEl = event.target.closest?.('[data-action]');
+    if (!actionEl || !elements.vocabAnalysisContent.contains(actionEl)) return;
+
+    const action = actionEl.dataset.action;
+    if (action === 'filter') {
+        vocabFilter = actionEl.dataset.filter || WORD_STATUSES.LEARNING;
+        renderVocabularyPanel();
+        return;
+    }
+
+    if (action === 'select') {
+        const word = actionEl.dataset.word;
+        if (word) {
+            selectWordFromVocabulary(word);
+            renderVocabularyPanel();
+        }
+        return;
+    }
+
+    if (action === 'set-status') {
+        const status = actionEl.dataset.status;
+        if (status) await setSelectedWordStatus(status);
+        return;
+    }
+
+    if (action === 'toggle-status') {
+        const word = actionEl.dataset.word;
+        if (word) await toggleVocabularyStatus(word);
+        return;
+    }
+
+    if (action === 'analyze') {
+        await analyzeSelectedWord();
+    }
+}
+
+// ============================================
+// Page-Flip Mode
+// ============================================
+let paginationMeasure = null;
+
+function ensurePaginationMeasure(heightPx) {
+    if (!paginationMeasure) {
+        paginationMeasure = document.createElement('div');
+        paginationMeasure.className = 'reading-content page-measure';
+        paginationMeasure.style.position = 'absolute';
+        paginationMeasure.style.left = '-99999px';
+        paginationMeasure.style.top = '0';
+        paginationMeasure.style.pointerEvents = 'none';
+        paginationMeasure.style.visibility = 'hidden';
+        paginationMeasure.style.overflow = 'hidden';
+        document.body.appendChild(paginationMeasure);
+    }
+
+    paginationMeasure.style.width = `${elements.readingContent.clientWidth}px`;
+    paginationMeasure.style.height = `${heightPx}px`;
+    paginationMeasure.innerHTML = '';
+    return paginationMeasure;
+}
+
+function paginateTokenizedWrapper(wrapper, pageHeightPx) {
+    const measure = ensurePaginationMeasure(pageHeightPx);
+    const pageWrapper = document.createElement('div');
+    measure.appendChild(pageWrapper);
+
+    /** @type {string[]} */
+    const pages = [];
+
+    const paragraphs = Array.from(wrapper.children);
+    for (const paragraph of paragraphs) {
+        const clone = paragraph.cloneNode(true);
+        pageWrapper.appendChild(clone);
+
+        if (measure.scrollHeight > pageHeightPx) {
+            pageWrapper.removeChild(clone);
+
+            // Finish current page if it has content
+            if (pageWrapper.childNodes.length > 0) {
+                pages.push(pageWrapper.innerHTML);
+                pageWrapper.innerHTML = '';
+            }
+
+            // Try again on a fresh page
+            pageWrapper.appendChild(clone);
+            if (measure.scrollHeight > pageHeightPx) {
+                // Paragraph is too tall even on an empty page: split by tokens.
+                pageWrapper.removeChild(clone);
+                splitOversizeParagraphIntoPages(paragraph, measure, pageWrapper, pageHeightPx, pages);
+            }
+        }
+    }
+
+    if (pageWrapper.childNodes.length > 0) {
+        pages.push(pageWrapper.innerHTML);
+    }
+
+    return pages.length > 0 ? pages : [''];
+}
+
+function splitOversizeParagraphIntoPages(paragraph, measure, pageWrapper, pageHeightPx, pages) {
+    const tokens = Array.from(paragraph.childNodes);
+    let start = 0;
+
+    while (start < tokens.length) {
+        const maxEnd = findMaxFittingTokenEnd(tokens, start, measure, pageWrapper, pageHeightPx);
+        const end = Math.max(start + 1, maxEnd);
+
+        const piece = document.createElement('p');
+        for (let i = start; i < end; i++) {
+            piece.appendChild(tokens[i].cloneNode(true));
+        }
+        pageWrapper.appendChild(piece);
+
+        pages.push(pageWrapper.innerHTML);
+        pageWrapper.innerHTML = '';
+        start = end;
+    }
+}
+
+function findMaxFittingTokenEnd(tokens, start, measure, pageWrapper, pageHeightPx) {
+    let low = start + 1;
+    let high = tokens.length;
+    let best = start;
+
+    while (low <= high) {
+        const mid = Math.floor((low + high) / 2);
+        const probe = document.createElement('p');
+        for (let i = start; i < mid; i++) {
+            probe.appendChild(tokens[i].cloneNode(true));
+        }
+
+        pageWrapper.appendChild(probe);
+        const fits = measure.scrollHeight <= pageHeightPx;
+        pageWrapper.removeChild(probe);
+
+        if (fits) {
+            best = mid;
+            low = mid + 1;
+        } else {
+            high = mid - 1;
+        }
+    }
+
+    return best;
+}
+
+function updatePageControls() {
+    const total = chapterPages.length || 1;
+    const pageNumber = Math.min(currentPageIndex + 1, total);
+    elements.pageIndicator.textContent = `${pageNumber} / ${total}`;
+
+    const hasPrev = (chapterPages.length > 0) && (currentPageIndex > 0 || currentChapterIndex > 0);
+    const hasNext = (chapterPages.length > 0) && (currentPageIndex < total - 1 || (currentBook && currentChapterIndex < currentBook.chapters.length - 1));
+
+    elements.prevPageBtn.disabled = !hasPrev;
+    elements.nextPageBtn.disabled = !hasNext;
+
+    updateProgressUI();
+}
+
+function renderCurrentPage(direction = 'none') {
+    elements.readingContent.innerHTML = '';
+
+    const wrapper = document.createElement('div');
+    wrapper.innerHTML = chapterPages[currentPageIndex] || '';
+    elements.readingContent.appendChild(wrapper);
+
+    clickedWordsOnPage = new Set();
+    if (selectedWordEl) selectedWordEl = null;
+    applyWordStatusesToContainer(elements.readingContent);
+    updatePageControls();
+    schedulePageProgressSave();
+
+    const fromX = direction === 'next' ? 18 : direction === 'prev' ? -18 : 0;
+    if (fromX !== 0) {
+        wrapper.animate(
+            [
+                { opacity: 0.5, transform: `translateX(${fromX}px)` },
+                { opacity: 1, transform: 'translateX(0px)' }
+            ],
+            { duration: 160, easing: 'cubic-bezier(0.2, 0.8, 0.2, 1)' }
+        );
+    }
+}
+
+let pageProgressSaveTimer = null;
+function schedulePageProgressSave() {
+    if (!currentBookId || !currentBook) return;
+    if (!isPageFlipMode) return;
+
+    if (pageProgressSaveTimer) {
+        clearTimeout(pageProgressSaveTimer);
+    }
+
+    pageProgressSaveTimer = setTimeout(async () => {
+        try {
+            const chapterId = currentBook.chapters?.[currentChapterIndex]?.id || null;
+            await updatePageProgress(currentBookId, { chapterId, pageNumber: currentPageIndex, scrollPosition: 0 });
+        } catch (error) {
+            console.warn('Failed to save page progress:', error);
+        }
+    }, 250);
+}
+
+function updateProgressUI() {
+    if (!currentBook) return;
+
+    const totalPages = Math.max(1, chapterPages.length || 1);
+    const chapterPct = Math.min(1, Math.max(0, (currentPageIndex + 1) / totalPages));
+    const bookPct = Math.min(1, Math.max(0, (currentChapterIndex + chapterPct) / Math.max(1, currentBook.chapters.length || 1)));
+
+    if (elements.chapterProgressFill) {
+        elements.chapterProgressFill.style.width = `${Math.round(chapterPct * 100)}%`;
+    }
+
+    const bookPercentText = `${Math.round(bookPct * 100)}%`;
+    if (elements.bookProgressPercent) elements.bookProgressPercent.textContent = bookPercentText;
+    if (elements.bookProgressText) elements.bookProgressText.textContent = bookPercentText;
+}
+
+function getCurrentPageWordMap() {
+    /** @type {Map<string, string>} */
+    const words = new Map();
+    elements.readingContent.querySelectorAll('.word').forEach((el) => {
+        const normalized = el.dataset.word || '';
+        if (!normalized || words.has(normalized)) return;
+        words.set(normalized, (el.textContent || normalized).trim() || normalized);
+    });
+    return words;
+}
+
+function capturePageTurnSnapshot() {
+    return {
+        bookId: currentBookId,
+        chapterId: currentBook?.chapters?.[currentChapterIndex]?.id || null,
+        words: getCurrentPageWordMap(),
+        clicked: new Set(clickedWordsOnPage)
+    };
+}
+
+async function processPageTurn(snapshot) {
+    if (!snapshot?.bookId) return;
+
+    const updates = [];
+    snapshot.words.forEach((displayWord, normalizedWord) => {
+        const prevCount = encounterCountByWord.get(normalizedWord) || 0;
+        const nextCount = prevCount + 1;
+        encounterCountByWord.set(normalizedWord, nextCount);
+
+        if (snapshot.clicked.has(normalizedWord)) return;
+
+        const status = getEffectiveWordStatus(normalizedWord);
+        if (status === WORD_STATUSES.NEW && nextCount >= 1) {
+            updates.push({
+                bookId: snapshot.bookId,
+                word: normalizedWord,
+                displayWord,
+                status: WORD_STATUSES.SEEN,
+                sourceChapterId: snapshot.chapterId
+            });
+            return;
+        }
+
+        if (status === WORD_STATUSES.SEEN && nextCount >= 2) {
+            const existing = vocabularyByWord.get(normalizedWord) || {};
+            updates.push({
+                ...existing,
+                bookId: snapshot.bookId,
+                word: normalizedWord,
+                displayWord: existing.displayWord || displayWord,
+                status: WORD_STATUSES.KNOWN,
+                sourceChapterId: existing.sourceChapterId || snapshot.chapterId
+            });
+        }
+    });
+
+    if (updates.length === 0) return;
+
+    try {
+        const records = await upsertVocabularyItems(updates);
+        records.forEach((record) => vocabularyByWord.set(record.word, record));
+    } catch (error) {
+        console.warn('Failed to persist page-turn word statuses:', error);
+    }
+}
+
+function goToPreviousPage() {
+    if (!isPageFlipMode) return;
+
+    const snapshot = capturePageTurnSnapshot();
+    void processPageTurn(snapshot);
+
+    if (currentPageIndex > 0) {
+        currentPageIndex -= 1;
+        renderCurrentPage('prev');
+        return;
+    }
+
+    if (currentBook && currentChapterIndex > 0) {
+        loadChapter(currentChapterIndex - 1, { startPage: 'last' });
+    }
+}
+
+function goToNextPage() {
+    if (!isPageFlipMode) return;
+
+    const snapshot = capturePageTurnSnapshot();
+    void processPageTurn(snapshot);
+
+    if (currentPageIndex < chapterPages.length - 1) {
+        currentPageIndex += 1;
+        renderCurrentPage('next');
+        return;
+    }
+
+    if (currentBook && currentChapterIndex < currentBook.chapters.length - 1) {
+        loadChapter(currentChapterIndex + 1, { startPage: 'first' });
+    }
 }
 
 // ============================================
 // View Switching
 // ============================================
+async function switchToReview() {
+    // Save current reading progress if coming from reader
+    if (currentView === 'reader' && currentBook && currentBookId) {
+        saveCurrentProgress();
+        stopBackgroundSync();
+    }
+
+    currentView = 'review';
+    elements.bookshelfView.style.display = 'none';
+    elements.readerView.style.display = 'none';
+    elements.reviewView.style.display = '';
+
+    await refreshGlobalVocabCache();
+    await loadReviewSession();
+}
+
+function setReviewVisibility(mode) {
+    if (!elements.reviewEmpty || !elements.reviewSession) return;
+    elements.reviewEmpty.style.display = mode === 'empty' ? '' : 'none';
+    elements.reviewSession.style.display = mode === 'session' ? '' : 'none';
+}
+
+function renderReviewStats(stats) {
+    if (!elements.reviewStats) return;
+    elements.reviewStats.textContent = `Due: ${stats.due} | New: ${stats.new} | Total: ${stats.total}`;
+}
+
+async function loadReviewSession() {
+    const stats = await getReviewStats(new Date());
+    renderReviewStats(stats);
+
+    reviewQueue = await getDueCards(new Date());
+    // Shuffle to avoid always drilling the same ordering
+    reviewQueue = reviewQueue.sort(() => Math.random() - 0.5);
+    reviewIndex = 0;
+    currentReviewItem = null;
+
+    if (reviewQueue.length === 0) {
+        setReviewVisibility('empty');
+        return;
+    }
+
+    setReviewVisibility('session');
+    await showNextCard();
+}
+
+function setReviewText(el, value, fallback = '—') {
+    if (!el) return;
+    const text = (value ?? '').toString().trim();
+    el.textContent = text ? text : fallback;
+}
+
+async function showNextCard() {
+    if (reviewIndex >= reviewQueue.length) {
+        await loadReviewSession();
+        return;
+    }
+
+    currentReviewItem = reviewQueue[reviewIndex];
+    const display = currentReviewItem?.displayWord || currentReviewItem?.normalizedWord || currentReviewItem?.id || '—';
+
+    setReviewText(elements.reviewWord, display);
+    setReviewText(elements.reviewMeaning, currentReviewItem?.meaning);
+    setReviewText(elements.reviewUsage, currentReviewItem?.usage);
+    setReviewText(elements.reviewContext, currentReviewItem?.contextSentence);
+    setReviewText(elements.reviewContextualMeaning, currentReviewItem?.contextualMeaning);
+
+    const intervals = await previewNextIntervals(currentReviewItem, new Date());
+    setReviewText(elements.reviewAgainInterval, intervals.again, '');
+    setReviewText(elements.reviewHardInterval, intervals.hard, '');
+    setReviewText(elements.reviewGoodInterval, intervals.good, '');
+    setReviewText(elements.reviewEasyInterval, intervals.easy, '');
+}
+
+async function submitRating(rating) {
+    if (currentView !== 'review') return;
+    if (!currentReviewItem) return;
+
+    try {
+        const updated = await reviewCard(currentReviewItem, rating, new Date());
+        reviewQueue[reviewIndex] = updated;
+        globalVocabByWord.set(updated.normalizedWord || updated.id, updated);
+        currentReviewItem = null;
+        reviewIndex += 1;
+
+        renderReviewStats(await getReviewStats(new Date()));
+        await showNextCard();
+    } catch (error) {
+        console.error('Failed to review card:', error);
+        showNotification('复习失败: ' + error.message, 'error');
+    }
+}
+
 function switchToBookshelf() {
     // Save current reading progress
     if (currentBook && currentBookId) {
         saveCurrentProgress();
     }
 
+    stopBackgroundSync();
+
     currentView = 'bookshelf';
     elements.bookshelfView.style.display = '';
     elements.readerView.style.display = 'none';
+    elements.reviewView.style.display = 'none';
+    elements.readerView.classList.remove('page-mode');
 
     // Refresh bookshelf
     refreshBookshelf();
@@ -340,18 +1298,35 @@ async function switchToReader(bookId) {
         currentBook = book;
         currentBookId = bookId;
         currentChapterIndex = book.currentChapter || 0;
+        encounterCountByWord = new Map();
+        clickedWordsOnPage = new Set();
+
+        const pageProgress = await getPageProgress(bookId);
+        const progressChapterId = pageProgress?.chapterId || null;
+        const progressPageNumber = typeof pageProgress?.pageNumber === 'number' ? pageProgress.pageNumber : 0;
+        if (progressChapterId && Array.isArray(book.chapters)) {
+            const idx = book.chapters.findIndex((ch) => ch.id === progressChapterId);
+            if (idx >= 0) currentChapterIndex = idx;
+        }
 
         // Update UI
         elements.bookTitle.textContent = book.title;
         renderChaptersList();
 
-        // Load saved chapter
-        loadChapter(currentChapterIndex);
-
         // Switch view
         currentView = 'reader';
         elements.bookshelfView.style.display = 'none';
         elements.readerView.style.display = '';
+        elements.reviewView.style.display = 'none';
+        elements.readerView.classList.toggle('page-mode', isPageFlipMode);
+
+        await refreshVocabularyCache();
+        await refreshGlobalVocabCache();
+
+        // Load saved chapter (after view is visible so pagination has correct dimensions)
+        await loadChapter(currentChapterIndex, { startPage: progressPageNumber });
+
+        startBackgroundSync(currentBookId);
 
         hideLoading();
     } catch (error) {
@@ -635,67 +1610,77 @@ async function handleFileImport(event) {
 function renderChaptersList() {
     if (!currentBook) return;
 
-    elements.chaptersList.innerHTML = currentBook.chapters.map((chapter, index) => `
-        <button class="chapter-item ${index === currentChapterIndex ? 'active' : ''}" 
-                data-index="${index}">
-            ${chapter.title}
+    elements.chapterSelectList.innerHTML = currentBook.chapters.map((chapter, index) => `
+        <button class="chapter-item ${index === currentChapterIndex ? 'active' : ''}" data-index="${index}">
+            ${escapeHtml(chapter.title)}
         </button>
     `).join('');
 
-    // Add click listeners
-    elements.chaptersList.querySelectorAll('.chapter-item').forEach(btn => {
+    elements.chapterSelectList.querySelectorAll('.chapter-item').forEach(btn => {
         btn.addEventListener('click', () => {
-            const index = parseInt(btn.dataset.index);
-            loadChapter(index);
+            const index = parseInt(btn.dataset.index, 10);
+            closeChapterSelectModal();
+            loadChapter(index, { startPage: 0 });
         });
     });
 }
 
-async function loadChapter(index) {
+function openChapterSelectModal() {
+    if (!currentBook) return;
+    renderChaptersList();
+    elements.chapterSelectModal.classList.add('open');
+}
+
+function closeChapterSelectModal() {
+    elements.chapterSelectModal?.classList.remove('open');
+}
+
+async function loadChapter(index, options = {}) {
     if (!currentBook || index < 0 || index >= currentBook.chapters.length) {
         return;
     }
 
-    // Save data from current chapter before switching
-    if (markerManager && currentBook && currentBookId) {
-        const marks = markerManager.getMarks();
-        const currentChapterId = currentBook.chapters[currentChapterIndex].id;
-        await saveChapterMarks(currentBookId, currentChapterId, marks);
-        // Save current vocab cards
-        if (currentChapterVocabCards.length > 0) {
-            await saveVocabCards(currentBookId, currentChapterId, currentChapterVocabCards);
-        }
-    }
+    // Save page progress before switching
+    schedulePageProgressSave();
 
     currentChapterIndex = index;
     const chapter = currentBook.chapters[index];
 
     // Update UI
     elements.chapterInfo.textContent = chapter.title;
-    elements.readingContent.innerHTML = textToHtml(chapter.content);
+    if (isPageFlipMode) {
+        const pageHeight = elements.readingContent.clientHeight || 520;
+        const tokenized = buildTokenizedChapterWrapper(chapter.content);
+        chapterPages = paginateTokenizedWrapper(tokenized, pageHeight);
+
+        if (options?.startPage === 'last') {
+            currentPageIndex = Math.max(0, chapterPages.length - 1);
+        } else if (typeof options?.startPage === 'number') {
+            currentPageIndex = Math.min(Math.max(0, options.startPage), Math.max(0, chapterPages.length - 1));
+        } else {
+            currentPageIndex = 0;
+        }
+
+        renderCurrentPage('none');
+    } else {
+        chapterPages = [];
+        currentPageIndex = 0;
+        renderTokenizedChapterContent(elements.readingContent, chapter.content);
+        updatePageControls();
+    }
 
     // Update chapter list active state
-    elements.chaptersList.querySelectorAll('.chapter-item').forEach((btn, i) => {
+    elements.chapterSelectList.querySelectorAll('.chapter-item').forEach((btn, i) => {
         btn.classList.toggle('active', i === index);
     });
 
     // Enable chapter analysis button
     elements.chapterAnalysisBtn.disabled = false;
 
-    // Initialize marker manager
-    if (markerManager) {
-        markerManager.destroy();
-    }
-    markerManager = new MarkerManager(elements.readingContent, handleMarksChange);
-
-    // Restore saved marks
-    const savedMarks = await getChapterMarks(currentBookId, chapter.id);
-    if (savedMarks.length > 0) {
-        markerManager.restoreMarks(savedMarks);
-    }
-
-    // Load and display vocab cards for this chapter
-    await loadChapterVocabCards();
+    // Refresh word status + vocabulary panel
+    await refreshVocabularyCache();
+    applyWordStatusesToContainer(elements.readingContent);
+    renderVocabularyPanel();
 
     // Load and display chapter analysis for this chapter
     await loadChapterAnalysisContent();
@@ -703,55 +1688,21 @@ async function loadChapter(index) {
     // Save reading position
     await updateReadingProgress(currentBookId, index);
 
-    // Scroll to top
-    elements.readingContent.scrollTop = 0;
+    // Scroll to top (scroll-mode only)
+    if (!isPageFlipMode) {
+        elements.readingContent.scrollTop = 0;
+    }
 }
 
 async function saveCurrentProgress() {
-    if (markerManager && currentBook && currentBookId) {
-        const marks = markerManager.getMarks();
-        const currentChapterId = currentBook.chapters[currentChapterIndex].id;
-        await saveChapterMarks(currentBookId, currentChapterId, marks);
-        // Save vocab cards
-        if (currentChapterVocabCards.length > 0) {
-            await saveVocabCards(currentBookId, currentChapterId, currentChapterVocabCards);
-        }
-        await updateReadingProgress(currentBookId, currentChapterIndex);
-    }
+    if (!currentBookId) return;
+    schedulePageProgressSave();
+    await updateReadingProgress(currentBookId, currentChapterIndex);
 }
 
 // ============================================
-// Vocabulary Management
+// Chapter Analysis
 // ============================================
-/**
- * Load and display vocab cards for the current chapter
- */
-async function loadChapterVocabCards() {
-    const container = elements.vocabAnalysisContent;
-    container.innerHTML = ''; // Clear previous content
-
-    if (!currentBook || !currentBookId) {
-        container.innerHTML = '<p class="empty-state">导入书籍后开始学习</p>';
-        currentChapterVocabCards = [];
-        return;
-    }
-
-    const chapterId = currentBook.chapters[currentChapterIndex].id;
-
-    // Load saved vocab cards for this chapter
-    currentChapterVocabCards = await getVocabCards(currentBookId, chapterId);
-
-    if (currentChapterVocabCards.length === 0) {
-        container.innerHTML = '<p class="empty-state">选中文本以添加到词汇列表</p>';
-        return;
-    }
-
-    // Render saved vocab cards
-    currentChapterVocabCards.forEach(cardData => {
-        const card = createWordAnalysisCard(cardData.word, cardData.analysis, false, cardData.context);
-        container.appendChild(card);
-    });
-}
 
 /**
  * Load and display chapter analysis for the current chapter
@@ -774,84 +1725,6 @@ async function loadChapterAnalysisContent() {
     } else {
         container.innerHTML = '<p class="empty-state">点击 "Chapter Analysis" 获取章节概览</p>';
     }
-}
-
-async function handleMarksChange(marks, newMark) {
-    // Save marks
-    if (currentBook && currentBookId) {
-        const chapterId = currentBook.chapters[currentChapterIndex].id;
-        await saveChapterMarks(currentBookId, chapterId, marks);
-    }
-
-    // If a new mark was added, analyze it instantly
-    if (newMark) {
-        await analyzeWordInstantly(newMark);
-    }
-}
-
-async function analyzeWordInstantly(markData) {
-    // Switch to vocabulary tab if not already there
-    switchTab('vocab-analysis');
-
-    // Show loading card at the top
-    const loadingCard = createWordAnalysisCard(markData.text, null, true);
-    prependToVocabAnalysis(loadingCard);
-
-    try {
-        // Import and call analyzeWordInstant
-        const { analyzeWordInstant } = await import('./ai-service.js');
-        const result = await analyzeWordInstant(markData.text, markData.context);
-
-        // Replace loading card with result
-        const resultCard = createWordAnalysisCard(markData.text, result, false, markData.context);
-        loadingCard.replaceWith(resultCard);
-
-        // Save the vocab card to the chapter's vocab cards
-        const cardData = {
-            word: markData.text,
-            analysis: result,
-            context: markData.context,
-            createdAt: new Date().toISOString()
-        };
-        currentChapterVocabCards.unshift(cardData); // Add to beginning
-
-        // Save to database
-        if (currentBook && currentBookId) {
-            const chapterId = currentBook.chapters[currentChapterIndex].id;
-            await saveVocabCards(currentBookId, chapterId, currentChapterVocabCards);
-        }
-
-        // Auto add to Anki if enabled
-        if (isAutoAnkiEnabled) {
-            const ankiBtn = resultCard.querySelector('.vocab-card-anki-btn');
-            if (ankiBtn) {
-                handleAddToAnki(resultCard, ankiBtn);
-            }
-        }
-    } catch (error) {
-        console.error('Instant analysis error:', error);
-        loadingCard.innerHTML = `
-            <div class="vocab-card-header">
-                <span class="vocab-card-word">${escapeHtml(markData.text)}</span>
-            </div>
-            <div class="vocab-card-body">
-                <p class="text-error">分析失败: ${escapeHtml(error.message)}</p>
-            </div>
-        `;
-    }
-}
-
-function prependToVocabAnalysis(element) {
-    const container = elements.vocabAnalysisContent;
-
-    // Remove empty state if present
-    const emptyState = container.querySelector('.empty-state');
-    if (emptyState) {
-        emptyState.remove();
-    }
-
-    // Prepend new element
-    container.insertBefore(element, container.firstChild);
 }
 
 function createWordAnalysisCard(word, analysis, isLoading, context = null) {
@@ -1028,7 +1901,9 @@ function applyTheme(theme) {
 }
 
 function toggleSidebar() {
-    elements.chaptersPanel.classList.toggle('collapsed');
+    elements.vocabPanel.classList.toggle('collapsed');
+    const isCollapsed = elements.vocabPanel.classList.contains('collapsed');
+    elements.resizeHandle.style.display = isCollapsed ? 'none' : '';
 }
 
 // ============================================
@@ -1038,6 +1913,7 @@ function setupResizeHandle() {
     let startX, startPanelWidth;
 
     elements.resizeHandle.addEventListener('mousedown', (e) => {
+        if (elements.vocabPanel.classList.contains('collapsed')) return;
         isResizing = true;
         startX = e.clientX;
         const mainRect = elements.mainContent.getBoundingClientRect();
@@ -1095,6 +1971,8 @@ function loadSettingsToForm() {
     elements.apiKey.value = settings.apiKey || '';
     elements.languageSelect.value = settings.language || '中文';
     elements.readingLevelSelect.value = settings.readingLevel || 'intermediate';
+    elements.backendUrl.value = settings.backendUrl || '';
+    elements.syncEnabledToggle.checked = !!settings.syncEnabled;
 
     // If model is saved, add it as an option
     if (settings.model) {
@@ -1104,6 +1982,8 @@ function loadSettingsToForm() {
         option.selected = true;
         elements.modelSelect.appendChild(option);
     }
+
+    updateSyncUI(getSyncStatus());
 }
 
 function openSettingsModal() {
@@ -1157,6 +2037,25 @@ function escapeHtml(text) {
     const div = document.createElement('div');
     div.textContent = text;
     return div.innerHTML;
+}
+
+function updateSyncUI(syncStatus) {
+    const state = syncStatus?.state || 'offline';
+    const lastSyncAt = syncStatus?.lastSyncAt || null;
+    const error = syncStatus?.error || null;
+
+    let label = 'Offline';
+    if (state === 'syncing') label = 'Syncing…';
+    if (state === 'synced') label = lastSyncAt ? 'Synced' : 'Synced';
+
+    if (elements.syncIndicator) {
+        elements.syncIndicator.textContent = label;
+        elements.syncIndicator.dataset.state = state;
+        elements.syncIndicator.title = error ? `Sync error: ${error}` : `Sync status: ${label}`;
+    }
+    if (elements.syncStatusText) {
+        elements.syncStatusText.textContent = error ? `Offline (${error})` : label;
+    }
 }
 
 function showNotification(message, type = 'info') {
@@ -1213,14 +2112,20 @@ function switchSettingsTab(tabName) {
     // Update tab buttons
     elements.settingsTabAI.classList.toggle('active', tabName === 'ai');
     elements.settingsTabAnki.classList.toggle('active', tabName === 'anki');
+    elements.settingsTabSync.classList.toggle('active', tabName === 'sync');
 
     // Update tab content
     elements.aiSettingsContent.classList.toggle('active', tabName === 'ai');
     elements.ankiSettingsContent.classList.toggle('active', tabName === 'anki');
+    elements.syncSettingsContent.classList.toggle('active', tabName === 'sync');
 
     // If switching to Anki tab, try to load options
     if (tabName === 'anki') {
         refreshAnkiOptions();
+    }
+
+    if (tabName === 'sync') {
+        updateSyncUI(getSyncStatus());
     }
 }
 
@@ -1403,19 +2308,19 @@ async function handleAddToAnki(card, button) {
 }
 
 /**
- * Handle Auto Anki toggle change
+ * Handle Auto Study toggle change
  */
 function handleAutoAnkiToggle() {
-    isAutoAnkiEnabled = elements.autoAnkiToggle.checked;
+    isAutoStudyEnabled = elements.autoAnkiToggle.checked;
 
     // Save to settings
     const ankiSettings = getAnkiSettings();
-    ankiSettings.autoAddToAnki = isAutoAnkiEnabled;
+    ankiSettings.autoAddToStudy = isAutoStudyEnabled;
+    // Back-compat with old key
+    ankiSettings.autoAddToAnki = isAutoStudyEnabled;
     saveAnkiSettings(ankiSettings);
 
-    if (isAutoAnkiEnabled) {
-        showNotification('自动添加到 Anki 已开启', 'success');
-    }
+    showNotification(isAutoStudyEnabled ? '自动加入学习已开启' : '自动加入学习已关闭', 'success');
 }
 
 /**
@@ -1428,7 +2333,9 @@ function handleSaveSettings() {
         apiKey: elements.apiKey.value.trim(),
         model: elements.modelSelect.value,
         language: elements.languageSelect.value,
-        readingLevel: elements.readingLevelSelect.value
+        readingLevel: elements.readingLevelSelect.value,
+        backendUrl: elements.backendUrl.value.trim(),
+        syncEnabled: !!elements.syncEnabledToggle.checked
     };
 
     if (saveSettings(settings)) {
@@ -1443,12 +2350,20 @@ function handleSaveSettings() {
                 usage: elements.fieldUsage.value,
                 contextualMeaning: elements.fieldContextualMeaning.value
             },
-            autoAddToAnki: isAutoAnkiEnabled
+            autoAddToStudy: isAutoStudyEnabled,
+            autoAddToAnki: isAutoStudyEnabled
         };
         saveAnkiSettings(ankiSettings);
 
         showNotification('设置已保存', 'success');
         closeSettingsModal();
+
+        // Restart background sync according to new settings
+        stopBackgroundSync();
+        if (currentView === 'reader' && currentBookId) {
+            startBackgroundSync(currentBookId);
+            if (settings.syncEnabled) syncNow(currentBookId);
+        }
     } else {
         showNotification('保存设置失败', 'error');
     }

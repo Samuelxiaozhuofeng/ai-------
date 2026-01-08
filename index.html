@@ -30,6 +30,9 @@
               <span class="icon">☰</span>
             </button>
           </div>
+          <button class="btn btn-secondary" id="reviewBtn" title="开始复习">
+            <span class="icon">🗓️</span> 复习
+          </button>
           <button class="btn btn-ghost" id="themeToggleBtnShelf" title="Toggle theme">
             <span class="icon" id="themeIconShelf">🌙</span>
           </button>
@@ -68,6 +71,7 @@
           <span class="book-title" id="bookTitle">No book loaded</span>
         </div>
         <div class="header-right">
+          <div class="sync-indicator" id="syncIndicator" title="Sync status">Offline</div>
           <button class="btn btn-ghost" id="themeToggleBtn" title="Toggle theme">
             <span class="icon" id="themeIcon">🌙</span>
           </button>
@@ -79,28 +83,26 @@
 
       <!-- Main Content -->
       <main class="main-content">
-        <!-- Sidebar: Chapters -->
-        <aside class="sidebar chapters-panel">
-          <div class="panel-header">
-            <h2>Chapters</h2>
-          </div>
-          <nav class="chapters-list" id="chaptersList">
-            <p class="empty-state">Import an EPUB to see chapters</p>
-          </nav>
-        </aside>
-
         <!-- Reading Area -->
         <section class="reading-panel">
           <div class="reading-toolbar">
             <div class="toolbar-info">
-              <span id="chapterInfo">Select a chapter to start reading</span>
+              <button class="chapter-select-btn" id="chapterSelectBtn" title="选择章节">
+                <span id="chapterInfo">Select a chapter to start reading</span>
+              </button>
+              <div class="progress-mini" aria-label="Reading progress">
+                <div class="progress-mini-bar">
+                  <div class="progress-mini-fill" id="chapterProgressFill"></div>
+                </div>
+                <span class="progress-mini-text" id="bookProgressPercent">0%</span>
+              </div>
             </div>
             <div class="toolbar-actions">
               <button class="btn btn-secondary" id="chapterAnalysisBtn" disabled>
                 <span class="icon">📖</span> Chapter Analysis
               </button>
               <div class="toolbar-hint">
-                <kbd>Ctrl</kbd> + <kbd>B</kbd> to mark vocabulary
+                <kbd>←</kbd>/<kbd>→</kbd> 翻页
               </div>
             </div>
           </div>
@@ -108,9 +110,17 @@
             <div class="welcome-state">
               <div class="welcome-icon">📖</div>
               <h2>Welcome to Language Reader</h2>
-              <p>Select a chapter from the sidebar to start reading</p>
+              <p>点击顶部章节标题选择章节开始阅读</p>
             </div>
           </article>
+          <div class="reader-footer" aria-label="Page navigation">
+            <button class="btn btn-secondary" id="prevPageBtn" disabled>← Prev</button>
+            <div class="reader-footer-center">
+              <div class="page-indicator" id="pageIndicator">1 / 1</div>
+              <div class="book-progress-text" id="bookProgressText">0%</div>
+            </div>
+            <button class="btn btn-secondary" id="nextPageBtn" disabled>Next →</button>
+          </div>
         </section>
 
         <!-- Resize Handle -->
@@ -126,10 +136,10 @@
               <button class="tab-btn" data-tab="chapter-analysis" id="tabChapterAnalysis">
                 <span>📖</span> Chapter
               </button>
-              <label class="auto-anki-toggle" title="自动添加到 Anki">
+              <label class="auto-anki-toggle" title="自动加入学习">
                 <input type="checkbox" id="autoAnkiToggle">
                 <span class="toggle-slider"></span>
-                <span class="toggle-label">Auto</span>
+                <span class="toggle-label">Study</span>
               </label>
             </div>
           </div>
@@ -151,6 +161,70 @@
       </main>
     </section>
 
+    <!-- Review View (Hidden by default) -->
+    <section class="review-view" id="reviewView" style="display: none;">
+      <header class="app-header">
+        <div class="header-left">
+          <button class="btn btn-ghost" id="backFromReviewBtn" title="返回书架">
+            <span class="icon">←</span>
+          </button>
+          <span class="book-title">📚 复习</span>
+        </div>
+        <div class="header-right">
+          <div class="review-stats" id="reviewStats">Due: 0 | New: 0 | Total: 0</div>
+        </div>
+      </header>
+
+      <main class="review-main">
+        <div class="review-empty" id="reviewEmpty" style="display: none;">
+          <div class="empty-icon">✅</div>
+          <h2>今天没有到期卡片</h2>
+          <p>回到书架继续阅读，或稍后再来复习。</p>
+          <button class="btn btn-primary" id="reviewFinishBtn">返回书架</button>
+        </div>
+
+        <div class="review-session" id="reviewSession" style="display: none;">
+          <div class="review-card" id="reviewCard">
+            <div class="review-word" id="reviewWord">—</div>
+            <div class="review-body">
+              <div class="review-row">
+                <div class="review-label">含义</div>
+                <div class="review-value" id="reviewMeaning">—</div>
+              </div>
+              <div class="review-row">
+                <div class="review-label">用法</div>
+                <div class="review-value" id="reviewUsage">—</div>
+              </div>
+              <div class="review-row">
+                <div class="review-label">上下文</div>
+                <div class="review-value" id="reviewContext">—</div>
+              </div>
+              <div class="review-row">
+                <div class="review-label">上下文含义</div>
+                <div class="review-value" id="reviewContextualMeaning">—</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="review-actions">
+            <button class="btn btn-secondary review-rate-btn" data-rating="again" id="reviewAgainBtn">
+              Again <span class="review-interval" id="reviewAgainInterval"></span>
+            </button>
+            <button class="btn btn-secondary review-rate-btn" data-rating="hard" id="reviewHardBtn">
+              Hard <span class="review-interval" id="reviewHardInterval"></span>
+            </button>
+            <button class="btn btn-secondary review-rate-btn" data-rating="good" id="reviewGoodBtn">
+              Good <span class="review-interval" id="reviewGoodInterval"></span>
+            </button>
+            <button class="btn btn-secondary review-rate-btn" data-rating="easy" id="reviewEasyBtn">
+              Easy <span class="review-interval" id="reviewEasyInterval"></span>
+            </button>
+          </div>
+          <div class="review-hint">快捷键: 1=Again 2=Hard 3=Good 4=Easy</div>
+        </div>
+      </main>
+    </section>
+
     <!-- Settings Modal -->
     <div class="modal-overlay" id="settingsModal">
       <div class="modal modal-large">
@@ -167,6 +241,9 @@
           </button>
           <button class="settings-tab" data-settings-tab="anki" id="settingsTabAnki">
             📝 Anki 设置
+          </button>
+          <button class="settings-tab" data-settings-tab="sync" id="settingsTabSync">
+            🔄 同步
           </button>
         </div>
         <div class="modal-body">
@@ -285,12 +362,45 @@
               </div>
             </div>
           </div>
+
+          <!-- Sync Settings Tab Content -->
+          <div class="settings-tab-content" id="syncSettingsContent">
+            <div class="form-group">
+              <label for="backendUrl">Backend URL</label>
+              <input type="url" id="backendUrl" placeholder="http://localhost:8000" class="input" />
+            </div>
+            <div class="form-group">
+              <label class="checkbox-row">
+                <input type="checkbox" id="syncEnabledToggle" />
+                <span>启用后台同步（每 30 秒）</span>
+              </label>
+            </div>
+            <div class="form-group">
+              <button class="btn btn-secondary" id="syncNowBtn">Sync Now</button>
+              <span class="sync-status-text" id="syncStatusText">Offline</span>
+            </div>
+          </div>
         </div>
         <div class="modal-footer">
           <button class="btn btn-ghost" id="cancelSettingsBtn">取消</button>
           <button class="btn btn-primary" id="saveSettingsBtn">
             保存设置
           </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Chapter Select Modal -->
+    <div class="modal-overlay" id="chapterSelectModal">
+      <div class="modal modal-large">
+        <div class="modal-header">
+          <h2>📚 选择章节</h2>
+          <button class="btn btn-ghost btn-small" id="closeChapterSelectBtn">✕</button>
+        </div>
+        <div class="modal-body">
+          <div class="chapters-select-list" id="chapterSelectList">
+            <p class="empty-state">Import an EPUB to see chapters</p>
+          </div>
         </div>
       </div>
     </div>

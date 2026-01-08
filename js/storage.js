@@ -18,6 +18,8 @@ const DEFAULT_SETTINGS = {
   model: "",
   language: "中文",
   readingLevel: "intermediate",
+  backendUrl: "http://localhost:8000",
+  syncEnabled: false,
 };
 
 // Default layout settings
@@ -123,6 +125,8 @@ const DEFAULT_ANKI_SETTINGS = {
     usage: '',          // 用法
     contextualMeaning: '' // 上下文含义
   },
+  autoAddToStudy: false,
+  // Back-compat (toggle used to be "Auto Add to Anki")
   autoAddToAnki: false
 };
 
@@ -135,6 +139,7 @@ export function getAnkiSettings() {
     const stored = localStorage.getItem(STORAGE_KEYS.ANKI_SETTINGS);
     if (stored) {
       const parsed = JSON.parse(stored);
+      const autoAddToStudy = parsed.autoAddToStudy ?? parsed.autoAddToAnki ?? DEFAULT_ANKI_SETTINGS.autoAddToStudy;
       // Merge with defaults to ensure all fields exist
       return {
         ...DEFAULT_ANKI_SETTINGS,
@@ -142,7 +147,8 @@ export function getAnkiSettings() {
         fieldMapping: {
           ...DEFAULT_ANKI_SETTINGS.fieldMapping,
           ...(parsed.fieldMapping || {})
-        }
+        },
+        autoAddToStudy
       };
     }
   } catch (e) {
