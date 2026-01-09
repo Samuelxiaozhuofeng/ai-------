@@ -115,6 +115,32 @@ export function createReaderController(elements) {
     elements.readingContent.addEventListener('mouseup', wordHighlighter.handleReadingSelectionEnd);
     elements.readingContent.addEventListener('touchend', wordHighlighter.handleReadingSelectionEnd);
 
+    // Swipe Gesture Support
+    let touchStartX = 0;
+    let touchEndX = 0;
+    const swipeThreshold = 50; // pixels
+
+    elements.readingContent.addEventListener('touchstart', (e) => {
+      touchStartX = e.changedTouches[0].screenX;
+    }, { passive: true });
+
+    elements.readingContent.addEventListener('touchend', (e) => {
+      if (!state.isPageFlipMode) return;
+
+      touchEndX = e.changedTouches[0].screenX;
+      const diffX = touchEndX - touchStartX;
+
+      if (Math.abs(diffX) > swipeThreshold) {
+        if (diffX > 0) {
+          // Swipe Right -> Previous Page
+          pagination.goToPreviousPage();
+        } else {
+          // Swipe Left -> Next Page
+          pagination.goToNextPage();
+        }
+      }
+    }, { passive: true });
+
     elements.chapterSelectBtn?.addEventListener('click', chapters.openChapterSelectModal);
 
     if (elements.toggleSidebarBtn) {
