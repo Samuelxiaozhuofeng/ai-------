@@ -471,6 +471,7 @@ export function createVocabPanel({
   }
 
   function renderVocabularyPanel() {
+    const isMobile = window.innerWidth <= 768;
     const container = elements.vocabAnalysisContent;
 
     if (!state.currentBookId) {
@@ -490,7 +491,7 @@ export function createVocabPanel({
     const aiConfigured = isAiConfigured();
     const canRetryAnalysis = Boolean(state.selectedWord && !state.selectedWordAnalysis && !state.isSelectedAnalysisLoading && aiConfigured);
 
-    container.innerHTML = `
+    const html = `
         <div class="vocab-panel-controls">
           <div class="vocab-filters">
             <button class="vocab-filter ${activeFilter === 'all' ? 'active' : ''}" data-action="filter" data-filter="all">
@@ -548,9 +549,23 @@ export function createVocabPanel({
         </div>
     `;
 
+    container.innerHTML = html;
+
+    // Mirror to mobile sheet if needed
+    if (elements.mobileVocabContent) {
+      if (state.selectedWord && isMobile) {
+        elements.mobileVocabContent.innerHTML = html;
+        elements.mobileVocabOverlay.classList.add('active');
+        // Attach event listeners to mirrored content
+        elements.mobileVocabContent.addEventListener('click', handleVocabPanelClick);
+      } else if (!state.selectedWord && isMobile) {
+        elements.mobileVocabOverlay.classList.remove('active');
+      }
+    }
+
     if (state.selectedWord && (state.isSelectedAnalysisLoading || state.selectedWordAnalysis)) {
-      const slot = container.querySelector('#selectedWordAnalysisSlot');
-      if (slot) {
+      const slots = document.querySelectorAll('#selectedWordAnalysisSlot');
+      slots.forEach(slot => {
         slot.innerHTML = '';
         const card = createWordAnalysisCard(
           state.selectedWordDisplay || state.selectedWord,
@@ -559,8 +574,23 @@ export function createVocabPanel({
           selectedEntry?.context || state.selectedWordContext
         );
         slot.appendChild(card);
-      }
+      });
     }
+  }
+
+  // Handle mobile overlay click
+  if (elements.mobileVocabOverlay) {
+    elements.mobileVocabOverlay.addEventListener('click', (e) => {
+      if (e.target === elements.mobileVocabOverlay) {
+        state.selectedWord = null;
+        if (state.selectedWordEl) {
+          state.selectedWordEl.classList.remove('word-selected');
+          state.selectedWordEl = null;
+        }
+        elements.mobileVocabOverlay.classList.remove('active');
+        renderVocabularyPanel();
+      }
+    });
   }
 
   return {

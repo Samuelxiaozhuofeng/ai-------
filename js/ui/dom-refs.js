@@ -201,6 +201,11 @@ export const elements = {
   languageSelectModal: document.getElementById('languageSelectModal'),
   closeLanguageSelectBtn: document.getElementById('closeLanguageSelectBtn'),
   cancelLanguageSelectBtn: document.getElementById('cancelLanguageSelectBtn'),
-  languageSelectButtons: document.getElementById('languageSelectButtons')
+  languageSelectButtons: document.getElementById('languageSelectButtons'),
+
+  // Mobile Vocab Bottom Sheet
+  mobileVocabOverlay: document.getElementById('mobileVocabOverlay'),
+  mobileVocabSheet: document.getElementById('mobileVocabSheet'),
+  mobileVocabContent: document.getElementById('mobileVocabContent')
 };
 

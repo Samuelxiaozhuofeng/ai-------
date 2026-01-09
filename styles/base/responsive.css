@@ -84,6 +84,78 @@
     padding: 8px 12px;
   }
 
+  /* Bottom Sheet Styles */
+  .mobile-vocab-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.4);
+    z-index: 2000;
+    display: none;
+    opacity: 0;
+    transition: opacity 0.3s ease;
+    backdrop-filter: blur(2px);
+  }
+
+  .mobile-vocab-overlay.active {
+    display: block;
+    opacity: 1;
+  }
+
+  .mobile-vocab-sheet {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: var(--bg-secondary);
+    border-radius: var(--radius-xl) var(--radius-xl) 0 0;
+    padding: var(--spacing-md);
+    transform: translateY(100%);
+    transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    max-height: 70vh;
+    display: flex;
+    flex-direction: column;
+    box-shadow: 0 -10px 25px rgba(0, 0, 0, 0.1);
+  }
+
+  .mobile-vocab-overlay.active .mobile-vocab-sheet {
+    transform: translateY(0);
+  }
+
+  .sheet-handle {
+    width: 40px;
+    height: 4px;
+    background: var(--border-default);
+    border-radius: 2px;
+    margin: 0 auto var(--spacing-md);
+    flex-shrink: 0;
+  }
+
+  .sheet-content {
+    overflow-y: auto;
+    flex: 1;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  /* Adjust card styles within mobile sheet */
+  .mobile-vocab-sheet .vocab-selected-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--spacing-md);
+  }
+
+  .mobile-vocab-sheet .vocab-selected-actions {
+    width: 100%;
+    justify-content: flex-start;
+    gap: 4px;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    padding-bottom: 4px;
+  }
+
+  .mobile-vocab-sheet .vocab-card {
+    background: var(--bg-primary);
+  }
+
   /* Bookshelf Header Mobile Optimization */
   .bookshelf-header {
     padding: 0 var(--spacing-sm) !important;
