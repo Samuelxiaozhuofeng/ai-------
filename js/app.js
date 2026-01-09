@@ -86,6 +86,7 @@ let encounterCountByWord = new Map(); // normalizedWord -> number (per session)
 let reviewQueue = [];
 let reviewIndex = 0;
 let currentReviewItem = null;
+let isReviewAnswerShown = false;
 
 // ============================================
 // DOM Elements
@@ -221,11 +222,15 @@ const elements = {
     reviewEmpty: document.getElementById('reviewEmpty'),
     reviewFinishBtn: document.getElementById('reviewFinishBtn'),
     reviewSession: document.getElementById('reviewSession'),
+    reviewCard: document.getElementById('reviewCard'),
     reviewWord: document.getElementById('reviewWord'),
     reviewMeaning: document.getElementById('reviewMeaning'),
     reviewUsage: document.getElementById('reviewUsage'),
     reviewContext: document.getElementById('reviewContext'),
     reviewContextualMeaning: document.getElementById('reviewContextualMeaning'),
+    reviewShowAnswerBtn: document.getElementById('reviewShowAnswerBtn'),
+    reviewActions: document.getElementById('reviewActions'),
+    reviewHint: document.getElementById('reviewHint'),
     reviewAgainBtn: document.getElementById('reviewAgainBtn'),
     reviewHardBtn: document.getElementById('reviewHardBtn'),
     reviewGoodBtn: document.getElementById('reviewGoodBtn'),
@@ -351,6 +356,7 @@ function setupEventListeners() {
     // Review
     elements.backFromReviewBtn?.addEventListener('click', switchToBookshelf);
     elements.reviewFinishBtn?.addEventListener('click', switchToBookshelf);
+    elements.reviewShowAnswerBtn?.addEventListener('click', () => revealReviewAnswer());
     [elements.reviewAgainBtn, elements.reviewHardBtn, elements.reviewGoodBtn, elements.reviewEasyBtn]
         .filter(Boolean)
         .forEach((btn) => {
@@ -405,10 +411,17 @@ function setupEventListeners() {
         }
 
         if (!isTypingContext && currentView === 'review') {
-            if (e.key === '1') return void submitRating('again');
-            if (e.key === '2') return void submitRating('hard');
-            if (e.key === '3') return void submitRating('good');
-            if (e.key === '4') return void submitRating('easy');
+            const isSpace = e.key === ' ' || e.code === 'Space';
+            if (isSpace) {
+                e.preventDefault();
+                return void revealReviewAnswer();
+            }
+            if (isReviewAnswerShown) {
+                if (e.key === '1') return void submitRating('again');
+                if (e.key === '2') return void submitRating('hard');
+                if (e.key === '3') return void submitRating('good');
+                if (e.key === '4') return void submitRating('easy');
+            }
         }
 
         if (!isTypingContext && currentView === 'reader' && isPageFlipMode) {
@@ -578,12 +591,51 @@ function applyWordStatusesToContainer(container) {
 }
 
 function extractContextForWordSpan(wordEl) {
-    const paragraphText = wordEl.closest('p')?.textContent?.trim() || '';
+    const paragraph = wordEl.closest('p');
+    const paragraphText = paragraph?.textContent?.trim() || '';
+    if (!paragraphText || !paragraph) {
+        return {
+            previousSentence: '',
+            currentSentence: paragraphText,
+            nextSentence: '',
+            fullContext: paragraphText
+        };
+    }
+
+    const sentenceDelimiters = /[.!?¡¿。！？]+\s*/g;
+    const range = document.createRange();
+    range.selectNodeContents(paragraph);
+    range.setEndBefore(wordEl);
+    const offset = range.toString().length;
+
+    const boundaries = [0];
+    let match;
+    while ((match = sentenceDelimiters.exec(paragraphText)) !== null) {
+        boundaries.push(match.index + match[0].length);
+    }
+    boundaries.push(paragraphText.length);
+
+    let currentSentenceIndex = -1;
+    for (let i = 0; i < boundaries.length - 1; i++) {
+        if (offset >= boundaries[i] && offset < boundaries[i + 1]) {
+            currentSentenceIndex = i;
+            break;
+        }
+    }
+    if (currentSentenceIndex === -1) {
+        currentSentenceIndex = boundaries.length - 2;
+    }
+
+    const currentSentence = paragraphText.substring(
+        boundaries[currentSentenceIndex],
+        boundaries[currentSentenceIndex + 1]
+    ).trim();
+
     return {
         previousSentence: '',
-        currentSentence: paragraphText,
+        currentSentence,
         nextSentence: '',
-        fullContext: paragraphText
+        fullContext: currentSentence
     };
 }
 
@@ -1226,6 +1278,33 @@ function setReviewText(el, value, fallback = '—') {
     el.textContent = text ? text : fallback;
 }
 
+function setReviewAnswerVisibility(isShown) {
+    isReviewAnswerShown = isShown;
+    if (elements.reviewCard) {
+        elements.reviewCard.classList.toggle('is-answer-hidden', !isShown);
+    }
+    if (elements.reviewActions) {
+        elements.reviewActions.classList.toggle('is-hidden', !isShown);
+    }
+    if (elements.reviewShowAnswerBtn) {
+        elements.reviewShowAnswerBtn.style.display = isShown ? 'none' : '';
+    }
+    const rateButtons = [elements.reviewAgainBtn, elements.reviewHardBtn, elements.reviewGoodBtn, elements.reviewEasyBtn];
+    rateButtons.filter(Boolean).forEach((btn) => {
+        btn.disabled = !isShown;
+    });
+    if (elements.reviewHint) {
+        elements.reviewHint.textContent = isShown
+            ? '快捷键: 1=Again 2=Hard 3=Good 4=Easy'
+            : '快捷键: 空格=显示答案 1=Again 2=Hard 3=Good 4=Easy';
+    }
+}
+
+function revealReviewAnswer() {
+    if (!currentReviewItem || isReviewAnswerShown) return;
+    setReviewAnswerVisibility(true);
+}
+
 async function showNextCard() {
     if (reviewIndex >= reviewQueue.length) {
         await loadReviewSession();
@@ -1241,6 +1320,8 @@ async function showNextCard() {
     setReviewText(elements.reviewContext, currentReviewItem?.contextSentence);
     setReviewText(elements.reviewContextualMeaning, currentReviewItem?.contextualMeaning);
 
+    setReviewAnswerVisibility(false);
+
     const intervals = await previewNextIntervals(currentReviewItem, new Date());
     setReviewText(elements.reviewAgainInterval, intervals.again, '');
     setReviewText(elements.reviewHardInterval, intervals.hard, '');
@@ -1251,6 +1332,7 @@ async function showNextCard() {
 async function submitRating(rating) {
     if (currentView !== 'review') return;
     if (!currentReviewItem) return;
+    if (!isReviewAnswerShown) return;
 
     try {
         const updated = await reviewCard(currentReviewItem, rating, new Date());

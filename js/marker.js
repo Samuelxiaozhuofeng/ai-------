@@ -98,9 +98,9 @@ export class MarkerManager {
     }
     
     /**
-     * Extract context sentences around the selection
+     * Extract the sentence containing the selection.
      * @param {Range} range - Selection range
-     * @returns {Object} Context object with previousSentence, currentSentence, nextSentence
+     * @returns {Object} Context object with currentSentence only
      */
     extractContext(range) {
         // Get the full text content
@@ -136,25 +136,16 @@ export class MarkerManager {
             currentSentenceIndex = boundaries.length - 2;
         }
         
-        // Extract sentences
-        const previousSentence = currentSentenceIndex > 0 
-            ? fullText.substring(boundaries[currentSentenceIndex - 1], boundaries[currentSentenceIndex]).trim()
-            : '';
-        
         const currentSentence = fullText.substring(
             boundaries[currentSentenceIndex], 
             boundaries[currentSentenceIndex + 1]
         ).trim();
-        
-        const nextSentence = currentSentenceIndex < boundaries.length - 2
-            ? fullText.substring(boundaries[currentSentenceIndex + 1], boundaries[currentSentenceIndex + 2]).trim()
-            : '';
-        
+
         return {
-            previousSentence,
             currentSentence,
-            nextSentence,
-            fullContext: [previousSentence, currentSentence, nextSentence].filter(s => s).join(' ')
+            previousSentence: '',
+            nextSentence: '',
+            fullContext: currentSentence
         };
     }
     

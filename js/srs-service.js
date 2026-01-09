@@ -176,7 +176,8 @@ export async function ensureGlobalLearningCard(params) {
   const normalized = normalizeWord(params?.normalizedWord || '');
   if (!normalized) throw new Error('Invalid word');
 
-  const nowIso = new Date().toISOString();
+  const now = new Date();
+  const nowIso = now.toISOString();
   const existing = await getGlobalVocabItem(normalized);
   const existingSourceBooks = Array.isArray(existing?.sourceBooks) ? existing.sourceBooks : [];
   const nextSourceBooks = params?.bookId && !existingSourceBooks.includes(params.bookId)
@@ -198,6 +199,16 @@ export async function ensureGlobalLearningCard(params) {
     createdAt: existing?.createdAt || nowIso,
     updatedAt: nowIso
   });
+
+  if (!existing) {
+    const dueDate = toDate(merged?.due, null);
+    if (!dueDate || dueDate.getTime() > now.getTime()) {
+      merged.due = nowIso;
+      merged.scheduled_days = 0;
+      merged.elapsed_days = 0;
+      merged.last_review = merged.last_review || nowIso;
+    }
+  }
 
   return upsertGlobalVocabItem(merged);
 }

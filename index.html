@@ -206,7 +206,9 @@
             </div>
           </div>
 
-          <div class="review-actions">
+          <button class="btn btn-primary review-show-answer" id="reviewShowAnswerBtn">显示答案 (空格)</button>
+
+          <div class="review-actions" id="reviewActions">
             <button class="btn btn-secondary review-rate-btn" data-rating="again" id="reviewAgainBtn">
               Again <span class="review-interval" id="reviewAgainInterval"></span>
             </button>
@@ -220,7 +222,7 @@
               Easy <span class="review-interval" id="reviewEasyInterval"></span>
             </button>
           </div>
-          <div class="review-hint">快捷键: 1=Again 2=Hard 3=Good 4=Easy</div>
+          <div class="review-hint" id="reviewHint">快捷键: 空格=显示答案 1=Again 2=Hard 3=Good 4=Easy</div>
         </div>
       </main>
     </section>

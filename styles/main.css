@@ -1654,6 +1654,15 @@ body {
   padding: var(--spacing-xl);
 }
 
+.review-card.is-answer-hidden .review-body {
+  display: none;
+}
+
+.review-show-answer {
+  align-self: center;
+  min-width: 220px;
+}
+
 .review-word {
   font-family: var(--font-family-reading);
   font-size: 40px;
@@ -1696,6 +1705,10 @@ body {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
   gap: var(--spacing-sm);
+}
+
+.review-actions.is-hidden {
+  display: none;
 }
 
 .review-rate-btn {

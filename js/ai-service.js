@@ -153,7 +153,7 @@ export async function analyzeWordInstant(word, context) {
 3. 重点关注该词在给定上下文中的具体含义
 4. 如果是短语，按短语整体解释`;
 
-    const contextText = context.fullContext || context.currentSentence || '';
+    const contextText = context.currentSentence || context.fullContext || '';
     
     const userPrompt = `请分析以下词汇：
     
