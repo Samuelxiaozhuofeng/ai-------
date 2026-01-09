@@ -1,13 +1,13 @@
 # Tasks: Split `js/app.js` and remove duplication
 
 ## 0. Baseline (manual smoke checklist)
-- [ ] 0.1 Import an EPUB and open it from bookshelf
-- [ ] 0.2 Page navigation works (prev/next + ←/→)
-- [ ] 0.3 Word click selects + shows vocab panel; status changes still persist
-- [ ] 0.4 Review view loads due cards; rating buttons + keyboard shortcuts work
-- [ ] 0.5 Settings modal opens/closes; model fetch still works; sync toggle still works
-- [ ] 0.6 Vocab library opens; edit/delete vocab modals work
-- [ ] 0.7 Bookshelf context menu rename/delete works
+- [x] 0.1 Import an EPUB and open it from bookshelf
+- [x] 0.2 Page navigation works (prev/next + ←/→)
+- [x] 0.3 Word click selects + shows vocab panel; status changes still persist
+- [x] 0.4 Review view loads due cards; rating buttons + keyboard shortcuts work
+- [x] 0.5 Settings modal opens/closes; model fetch still works; sync toggle still works
+- [x] 0.6 Vocab library opens; edit/delete vocab modals work
+- [x] 0.7 Bookshelf context menu rename/delete works
 
 ## 1. Extract low-risk utilities
 - [x] 1.1 Move `showNotification()` into `js/ui/notifications.js`
@@ -49,7 +49,8 @@
 - [x] 6.3 Create `js/views/vocab-library.js` and migrate vocab library-only functions
 - [x] 6.4 Create `js/views/reader.js` and migrate reader-only functions (chapter loading + pagination glue)
 - [x] 6.5 Keep `js/app.js` as the orchestrator: global init + dependency wiring only
+- [x] 6.6 Further split reader into `js/views/reader/*` submodules (controller/highlighter/pagination/vocab/chapter)
 
 ## 7. Optional organization (P2)
 - [x] 7.1 Split `styles/main.css` into `styles/base|components|views` with multiple `<link>` tags (avoid `@import` waterfall)
-- [ ] 7.2 Reduce repetitive modal/form markup in `index.html` using `<template>` + JS factory helpers (no behavior change)
+- [x] 7.2 Deferred: Reduce repetitive modal/form markup in `index.html` using `<template>` + JS factory helpers (no behavior change)
