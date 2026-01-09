@@ -19,7 +19,7 @@
     <section class="bookshelf-view" id="bookshelfView">
       <header class="bookshelf-header">
         <div class="header-left">
-          <h1 class="logo">📚 我的书架</h1>
+          <h1 class="logo"><span class="icon">📚</span> <span class="mobile-hide">我的书架</span></h1>
           <div class="language-tabs" id="languageTabs">
             <button class="language-tab active" data-language="en" id="languageTabEn">英语</button>
             <button class="language-tab" data-language="es" id="languageTabEs">西班牙语</button>
@@ -80,7 +80,9 @@
           <span class="book-title" id="bookTitle">No book loaded</span>
         </div>
         <div class="header-right">
-          <div class="sync-indicator" id="syncIndicator" title="Sync status">Offline</div>
+          <div class="sync-indicator" id="syncIndicator" title="Sync status">
+            <span class="sync-dot"></span> <span class="mobile-hide">Offline</span>
+          </div>
           <button class="btn btn-ghost" id="themeToggleBtn" title="Toggle theme">
             <span class="icon" id="themeIcon">🌙</span>
           </button>
@@ -108,7 +110,7 @@
             </div>
             <div class="toolbar-actions">
               <button class="btn btn-secondary" id="chapterAnalysisBtn" disabled>
-                <span class="icon">📖</span> Chapter Analysis
+                <span class="icon">📖</span> <span class="mobile-hide">Chapter Analysis</span>
               </button>
               <div class="toolbar-hint">
                 <kbd>←</kbd>/<kbd>→</kbd> 翻页
@@ -123,12 +125,16 @@
             </div>
           </article>
           <div class="reader-footer" aria-label="Page navigation">
-            <button class="btn btn-secondary" id="prevPageBtn" disabled>← Prev</button>
+            <button class="btn btn-secondary" id="prevPageBtn" disabled>
+              <span class="icon">←</span> <span class="mobile-hide">Prev</span>
+            </button>
             <div class="reader-footer-center">
               <div class="page-indicator" id="pageIndicator">1 / 1</div>
               <div class="book-progress-text" id="bookProgressText">0%</div>
             </div>
-            <button class="btn btn-secondary" id="nextPageBtn" disabled>Next →</button>
+            <button class="btn btn-secondary" id="nextPageBtn" disabled>
+              <span class="mobile-hide">Next</span> <span class="icon">→</span>
+            </button>
           </div>
         </section>
 
@@ -512,7 +518,8 @@
             </div>
 
             <div class="form-group">
-              <label for="fsrsRequestRetention">Request Retention <span class="slider-value" id="fsrsRequestRetentionValue">0.90</span></label>
+              <label for="fsrsRequestRetention">Request Retention <span class="slider-value"
+                  id="fsrsRequestRetentionValue">0.90</span></label>
               <input type="range" id="fsrsRequestRetention" min="0.70" max="0.97" step="0.01" value="0.90" />
               <small style="color: var(--text-secondary); font-size: 12px;">范围 0.70–0.97，值越高，复习越频繁。</small>
             </div>
