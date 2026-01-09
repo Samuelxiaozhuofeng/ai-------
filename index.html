@@ -30,6 +30,9 @@
               <span class="icon">☰</span>
             </button>
           </div>
+          <button class="btn btn-secondary" id="vocabLibraryBtn" title="词汇库">
+            <span class="icon">📝</span> 词汇库
+          </button>
           <button class="btn btn-secondary" id="reviewBtn" title="开始复习">
             <span class="icon">🗓️</span> 复习
           </button>
@@ -226,6 +229,107 @@
         </div>
       </main>
     </section>
+
+    <!-- Vocabulary Library View (Hidden by default) -->
+    <section class="vocab-library-view" id="vocabLibraryView" style="display: none;">
+      <header class="app-header">
+        <div class="header-left">
+          <button class="btn btn-ghost" id="backFromVocabLibraryBtn" title="返回书架">
+            <span class="icon">←</span>
+          </button>
+          <span class="book-title">📝 词汇库</span>
+        </div>
+        <div class="header-right">
+          <button class="btn btn-primary" id="startReviewFromLibraryBtn">
+            <span class="icon">🗓️</span> 开始复习
+          </button>
+        </div>
+      </header>
+
+      <main class="vocab-library-main">
+        <!-- Stats Panel -->
+        <div class="vocab-stats-grid" id="vocabStatsGrid">
+          <div class="vocab-stat-card">
+            <div class="stat-value" id="statLearningCount">0</div>
+            <div class="stat-label">学习中</div>
+          </div>
+          <div class="vocab-stat-card">
+            <div class="stat-value" id="statDueCount">0</div>
+            <div class="stat-label">今日到期</div>
+          </div>
+          <div class="vocab-stat-card">
+            <div class="stat-value" id="statTotalReps">0</div>
+            <div class="stat-label">总复习次数</div>
+          </div>
+        </div>
+
+        <!-- Vocabulary Grid -->
+        <div class="vocab-library-grid" id="vocabLibraryGrid">
+          <!-- Vocabulary cards will be rendered here -->
+        </div>
+
+        <!-- Empty State -->
+        <div class="vocab-library-empty" id="vocabLibraryEmpty" style="display: none;">
+          <div class="empty-icon">📚</div>
+          <h2>还没有学习中的词汇</h2>
+          <p>在阅读时点击单词并加入学习，词汇将会显示在这里</p>
+          <button class="btn btn-primary" id="vocabLibraryBackBtn">返回书架</button>
+        </div>
+      </main>
+    </section>
+
+    <!-- Edit Vocabulary Modal -->
+    <div class="modal-overlay" id="editVocabModal">
+      <div class="modal modal-medium">
+        <div class="modal-header">
+          <h2>✏️ 编辑词汇</h2>
+          <button class="btn btn-ghost btn-small" id="closeEditVocabBtn">✕</button>
+        </div>
+        <div class="modal-body">
+          <div class="form-group">
+            <label>单词</label>
+            <input type="text" id="editVocabWord" class="input" readonly />
+          </div>
+          <div class="form-group">
+            <label for="editVocabMeaning">含义</label>
+            <textarea id="editVocabMeaning" class="input textarea" rows="2"></textarea>
+          </div>
+          <div class="form-group">
+            <label for="editVocabUsage">用法</label>
+            <textarea id="editVocabUsage" class="input textarea" rows="2"></textarea>
+          </div>
+          <div class="form-group">
+            <label for="editVocabContext">上下文</label>
+            <textarea id="editVocabContext" class="input textarea" rows="2"></textarea>
+          </div>
+          <div class="form-group">
+            <label for="editVocabContextualMeaning">上下文含义</label>
+            <textarea id="editVocabContextualMeaning" class="input textarea" rows="2"></textarea>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-ghost" id="cancelEditVocabBtn">取消</button>
+          <button class="btn btn-primary" id="saveEditVocabBtn">保存</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Delete Vocabulary Confirmation Modal -->
+    <div class="modal-overlay" id="deleteVocabModal">
+      <div class="modal modal-small">
+        <div class="modal-header">
+          <h2>🗑️ 确认删除</h2>
+          <button class="btn btn-ghost btn-small" id="closeDeleteVocabBtn">✕</button>
+        </div>
+        <div class="modal-body">
+          <p id="deleteVocabConfirmText">确定要删除这个词汇吗？此操作无法撤销。</p>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-ghost" id="cancelDeleteVocabBtn">取消</button>
+          <button class="btn btn-danger" id="confirmDeleteVocabBtn">删除</button>
+        </div>
+      </div>
+    </div>
 
     <!-- Settings Modal -->
     <div class="modal-overlay" id="settingsModal">

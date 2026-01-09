@@ -52,13 +52,16 @@ import {
     upsertVocabularyItems,
     deleteVocabularyItem,
     listGlobalVocab,
-    generateBookHash
+    generateBookHash,
+    deleteGlobalVocabItem,
+    upsertGlobalVocabItem,
+    countDueCards
 } from './db.js';
 
 // ============================================
 // State
 // ============================================
-let currentView = 'bookshelf'; // 'bookshelf' | 'reader' | 'review'
+let currentView = 'bookshelf'; // 'bookshelf' | 'reader' | 'review' | 'vocab-library'
 let viewMode = 'grid';         // 'grid' | 'list'
 let booksLibrary = [];         // Books metadata list
 let currentBook = null;
@@ -79,6 +82,11 @@ let selectedWord = null; // normalized
 let selectedWordDisplay = null; // original casing
 let selectedWordContext = null;
 let selectedWordAnalysis = null;
+let isSelectedAnalysisLoading = false;
+let analysisDebounceTimer = null;
+let analysisRequestSeq = 0;
+let analysisAbortController = null;
+let suppressWordClickUntil = 0;
 let clickedWordsOnPage = new Set();
 let encounterCountByWord = new Map(); // normalizedWord -> number (per session)
 
@@ -87,6 +95,11 @@ let reviewQueue = [];
 let reviewIndex = 0;
 let currentReviewItem = null;
 let isReviewAnswerShown = false;
+
+// Vocabulary Library state
+let vocabLibraryItems = [];
+let editingVocabWord = null;
+let deletingVocabWord = null;
 
 // ============================================
 // DOM Elements
@@ -238,7 +251,38 @@ const elements = {
     reviewAgainInterval: document.getElementById('reviewAgainInterval'),
     reviewHardInterval: document.getElementById('reviewHardInterval'),
     reviewGoodInterval: document.getElementById('reviewGoodInterval'),
-    reviewEasyInterval: document.getElementById('reviewEasyInterval')
+    reviewEasyInterval: document.getElementById('reviewEasyInterval'),
+
+    // Vocabulary Library
+    vocabLibraryBtn: document.getElementById('vocabLibraryBtn'),
+    vocabLibraryView: document.getElementById('vocabLibraryView'),
+    backFromVocabLibraryBtn: document.getElementById('backFromVocabLibraryBtn'),
+    startReviewFromLibraryBtn: document.getElementById('startReviewFromLibraryBtn'),
+    vocabStatsGrid: document.getElementById('vocabStatsGrid'),
+    statLearningCount: document.getElementById('statLearningCount'),
+    statDueCount: document.getElementById('statDueCount'),
+    statTotalReps: document.getElementById('statTotalReps'),
+    vocabLibraryGrid: document.getElementById('vocabLibraryGrid'),
+    vocabLibraryEmpty: document.getElementById('vocabLibraryEmpty'),
+    vocabLibraryBackBtn: document.getElementById('vocabLibraryBackBtn'),
+
+    // Edit Vocabulary Modal
+    editVocabModal: document.getElementById('editVocabModal'),
+    closeEditVocabBtn: document.getElementById('closeEditVocabBtn'),
+    cancelEditVocabBtn: document.getElementById('cancelEditVocabBtn'),
+    saveEditVocabBtn: document.getElementById('saveEditVocabBtn'),
+    editVocabWord: document.getElementById('editVocabWord'),
+    editVocabMeaning: document.getElementById('editVocabMeaning'),
+    editVocabUsage: document.getElementById('editVocabUsage'),
+    editVocabContext: document.getElementById('editVocabContext'),
+    editVocabContextualMeaning: document.getElementById('editVocabContextualMeaning'),
+
+    // Delete Vocabulary Modal
+    deleteVocabModal: document.getElementById('deleteVocabModal'),
+    closeDeleteVocabBtn: document.getElementById('closeDeleteVocabBtn'),
+    cancelDeleteVocabBtn: document.getElementById('cancelDeleteVocabBtn'),
+    confirmDeleteVocabBtn: document.getElementById('confirmDeleteVocabBtn'),
+    deleteVocabConfirmText: document.getElementById('deleteVocabConfirmText')
 };
 
 // ============================================
@@ -323,6 +367,8 @@ function setupEventListeners() {
 
     // Reader: Clickable words (event delegation)
     elements.readingContent.addEventListener('click', handleReadingWordClick);
+    elements.readingContent.addEventListener('mouseup', handleReadingSelectionEnd);
+    elements.readingContent.addEventListener('touchend', handleReadingSelectionEnd);
 
     // Chapter select
     elements.chapterSelectBtn?.addEventListener('click', openChapterSelectModal);
@@ -400,8 +446,10 @@ function setupEventListeners() {
             closeRenameModal();
             closeDeleteModal();
             closeChapterSelectModal();
+            closeEditVocabModal();
+            closeDeleteVocabModal();
             hideContextMenu();
-            if (currentView === 'review') {
+            if (currentView === 'review' || currentView === 'vocab-library') {
                 switchToBookshelf();
             }
             if (isAnalysisMode) {
@@ -449,6 +497,29 @@ function setupEventListeners() {
 
     // Auto Anki toggle
     elements.autoAnkiToggle.addEventListener('change', handleAutoAnkiToggle);
+
+    // Vocabulary Library
+    elements.vocabLibraryBtn?.addEventListener('click', switchToVocabLibrary);
+    elements.backFromVocabLibraryBtn?.addEventListener('click', switchToBookshelf);
+    elements.startReviewFromLibraryBtn?.addEventListener('click', switchToReview);
+    elements.vocabLibraryBackBtn?.addEventListener('click', switchToBookshelf);
+    elements.vocabLibraryGrid?.addEventListener('click', handleVocabLibraryCardClick);
+
+    // Edit Vocabulary Modal
+    elements.closeEditVocabBtn?.addEventListener('click', closeEditVocabModal);
+    elements.cancelEditVocabBtn?.addEventListener('click', closeEditVocabModal);
+    elements.saveEditVocabBtn?.addEventListener('click', handleSaveVocabEdit);
+    elements.editVocabModal?.addEventListener('click', (e) => {
+        if (e.target === elements.editVocabModal) closeEditVocabModal();
+    });
+
+    // Delete Vocabulary Modal
+    elements.closeDeleteVocabBtn?.addEventListener('click', closeDeleteVocabModal);
+    elements.cancelDeleteVocabBtn?.addEventListener('click', closeDeleteVocabModal);
+    elements.confirmDeleteVocabBtn?.addEventListener('click', handleConfirmDeleteVocab);
+    elements.deleteVocabModal?.addEventListener('click', (e) => {
+        if (e.target === elements.deleteVocabModal) closeDeleteVocabModal();
+    });
 
     // Load Auto Study state from storage
     const ankiSettings = getAnkiSettings();
@@ -532,6 +603,11 @@ function tokenizeParagraphInto(paragraphEl, paragraphText) {
 }
 
 async function handleReadingWordClick(event) {
+    if (Date.now() < suppressWordClickUntil) return;
+
+    const selection = window.getSelection?.();
+    if (selection && !selection.isCollapsed && selection.toString().trim()) return;
+
     const target = event.target.closest?.('.word');
     if (!target || !elements.readingContent.contains(target)) return;
 
@@ -545,28 +621,283 @@ async function handleReadingWordClick(event) {
     if (selectedWord) clickedWordsOnPage.add(selectedWord);
 
     const existing = selectedWord ? vocabularyByWord.get(selectedWord) : null;
-    selectedWordAnalysis = existing?.analysis || null;
+    selectedWordAnalysis = getCachedAnalysisForSelectedWord(selectedWord, existing) || null;
+    isSelectedAnalysisLoading = false;
 
     switchTab('vocab-analysis');
 
     // Auto-study behavior:
-    // - Auto ON: clicking a new word marks it as learning
-    // - Auto OFF: clicking a seen word still marks it as learning
     const effectiveStatus = selectedWord ? getEffectiveWordStatus(selectedWord) : WORD_STATUSES.NEW;
-    const shouldAutoStudy = selectedWord && (effectiveStatus === WORD_STATUSES.SEEN || (effectiveStatus === WORD_STATUSES.NEW && isAutoStudyEnabled));
+    const shouldAutoStudy = Boolean(
+        selectedWord
+        && isAutoStudyEnabled
+        && effectiveStatus !== WORD_STATUSES.KNOWN
+        && effectiveStatus !== WORD_STATUSES.LEARNING
+    );
     if (shouldAutoStudy) {
         await setSelectedWordStatus(WORD_STATUSES.LEARNING, { trigger: 'click' });
     }
 
-    // Auto-analyze when AI is configured (especially useful when a word enters learning).
-    if (selectedWord && !selectedWordAnalysis && (shouldAutoStudy || effectiveStatus === WORD_STATUSES.NEW)) {
-        const settings = getSettings();
-        if (settings.apiUrl && settings.apiKey && settings.model) {
-            await analyzeSelectedWord();
-        }
+    // Auto-analyze when AI is configured.
+    if (selectedWord && !selectedWordAnalysis && isAiConfigured()) {
+        queueSelectedWordAnalysis({ debounceMs: 250 });
     }
 
     renderVocabularyPanel();
+}
+
+function collapseWhitespace(value) {
+    return String(value || '').replace(/\s+/g, ' ').trim();
+}
+
+function normalizeTextToKey(rawText) {
+    const collapsed = collapseWhitespace(rawText);
+    if (!collapsed) return '';
+
+    const parts = [];
+    const regex = getWordRegex();
+    regex.lastIndex = 0;
+    let match;
+    while ((match = regex.exec(collapsed)) !== null) {
+        const normalized = normalizeWord(match[0]);
+        if (normalized) parts.push(normalized);
+    }
+    if (parts.length > 0) return parts.join(' ');
+
+    return normalizeWord(collapsed);
+}
+
+function getCachedAnalysisForSelectedWord(normalizedWord, existingEntry = null) {
+    const local = existingEntry || (normalizedWord ? vocabularyByWord.get(normalizedWord) : null);
+    if (local?.analysis) return local.analysis;
+
+    const global = normalizedWord ? globalVocabByWord.get(normalizedWord) : null;
+    if (global && (global.meaning || global.usage || global.contextualMeaning)) {
+        return {
+            word: global.displayWord || normalizedWord,
+            meaning: global.meaning || '',
+            usage: global.usage || '',
+            contextualMeaning: global.contextualMeaning || ''
+        };
+    }
+
+    return null;
+}
+
+function isAiConfigured() {
+    const settings = getSettings();
+    return Boolean(settings.apiUrl && settings.apiKey && settings.model);
+}
+
+function cancelPendingAnalysis() {
+    if (analysisDebounceTimer) {
+        clearTimeout(analysisDebounceTimer);
+        analysisDebounceTimer = null;
+    }
+    if (analysisAbortController) {
+        try { analysisAbortController.abort(); } catch { /* ignore */ }
+        analysisAbortController = null;
+    }
+}
+
+function queueSelectedWordAnalysis({ debounceMs = 250, force = false } = {}) {
+    if (!selectedWord || !selectedWordDisplay) return;
+    if (!isAiConfigured()) return;
+    if (!force && selectedWordAnalysis) return;
+
+    cancelPendingAnalysis();
+
+    isSelectedAnalysisLoading = true;
+    renderVocabularyPanel();
+
+    const requestId = ++analysisRequestSeq;
+    const key = selectedWord;
+    const display = selectedWordDisplay;
+    const context = selectedWordContext;
+
+    analysisDebounceTimer = setTimeout(() => {
+        analysisDebounceTimer = null;
+        void runInstantAnalysisRequest(requestId, key, display, context);
+    }, Math.max(0, debounceMs));
+}
+
+async function runInstantAnalysisRequest(requestId, normalizedWord, displayWord, context) {
+    if (!normalizedWord || !displayWord) return;
+
+    const controller = new AbortController();
+    analysisAbortController = controller;
+    const signal = controller.signal;
+
+    try {
+        const { analyzeWordInstant } = await import('./ai-service.js');
+        const result = await analyzeWordInstant(displayWord, context || { fullContext: '' }, { signal });
+
+        if (requestId !== analysisRequestSeq) return;
+        if (selectedWord !== normalizedWord) return;
+
+        selectedWordAnalysis = result;
+
+        // Persist analysis for saved words; keep it in-memory for new words until user saves.
+        const existing = vocabularyByWord.get(normalizedWord) || null;
+        if (existing) {
+            const updated = await upsertVocabularyItem({
+                ...existing,
+                bookId: currentBookId,
+                word: normalizedWord,
+                displayWord: existing.displayWord || displayWord,
+                analysis: result,
+                context: existing.context || context,
+                sourceChapterId: existing.sourceChapterId || currentBook?.chapters?.[currentChapterIndex]?.id || null
+            });
+            vocabularyByWord.set(updated.word, updated);
+        }
+
+        if (getEffectiveWordStatus(normalizedWord) === WORD_STATUSES.LEARNING) {
+            const updatedGlobal = await upsertGlobalAnalysis(
+                normalizedWord,
+                result,
+                context?.currentSentence || null,
+                displayWord
+            );
+            if (updatedGlobal) {
+                globalVocabByWord.set(updatedGlobal.normalizedWord || updatedGlobal.id, updatedGlobal);
+            }
+        }
+    } catch (error) {
+        if (error?.name === 'AbortError') return;
+        console.error('Instant analysis error:', error);
+        showNotification('分析失败: ' + error.message, 'error');
+    } finally {
+        if (analysisAbortController === controller) {
+            analysisAbortController = null;
+        }
+        if (requestId === analysisRequestSeq && selectedWord === normalizedWord) {
+            isSelectedAnalysisLoading = false;
+            renderVocabularyPanel();
+        }
+    }
+}
+
+function getSelectionParagraph(node) {
+    const el = node?.nodeType === Node.TEXT_NODE ? node.parentElement : node;
+    return el?.closest?.('p') || null;
+}
+
+function extractContextForRange(range) {
+    const startP = getSelectionParagraph(range?.startContainer);
+    const endP = getSelectionParagraph(range?.endContainer);
+    if (!startP || !endP || startP !== endP) return null;
+
+    const paragraphText = startP?.textContent?.trim?.() || '';
+    if (!paragraphText) {
+        return {
+            previousSentence: '',
+            currentSentence: paragraphText,
+            nextSentence: '',
+            fullContext: paragraphText
+        };
+    }
+
+    const sentenceDelimiters = /[.!?¡¿。！？]+\s*/g;
+
+    const preRange = document.createRange();
+    preRange.selectNodeContents(startP);
+    try {
+        preRange.setEnd(range.startContainer, range.startOffset);
+    } catch {
+        // If setEnd fails, fall back to full paragraph context.
+        return {
+            previousSentence: '',
+            currentSentence: paragraphText,
+            nextSentence: '',
+            fullContext: paragraphText
+        };
+    }
+
+    const offset = preRange.toString().length;
+
+    const boundaries = [0];
+    let match;
+    while ((match = sentenceDelimiters.exec(paragraphText)) !== null) {
+        boundaries.push(match.index + match[0].length);
+    }
+    boundaries.push(paragraphText.length);
+
+    let currentSentenceIndex = -1;
+    for (let i = 0; i < boundaries.length - 1; i++) {
+        if (offset >= boundaries[i] && offset < boundaries[i + 1]) {
+            currentSentenceIndex = i;
+            break;
+        }
+    }
+    if (currentSentenceIndex === -1) {
+        currentSentenceIndex = boundaries.length - 2;
+    }
+
+    const currentSentence = paragraphText.substring(
+        boundaries[currentSentenceIndex],
+        boundaries[currentSentenceIndex + 1]
+    ).trim();
+
+    return {
+        previousSentence: '',
+        currentSentence,
+        nextSentence: '',
+        fullContext: currentSentence
+    };
+}
+
+function handleReadingSelectionEnd() {
+    // Run after mouseup/touchend so selection text is final.
+    setTimeout(() => {
+        const selection = window.getSelection?.();
+        if (!selection || selection.isCollapsed) return;
+
+        const selectedText = collapseWhitespace(selection.toString());
+        if (!selectedText) return;
+        if (selectedText.length > 80) return;
+        if (/\n/.test(selectedText)) return;
+
+        const range = selection.rangeCount ? selection.getRangeAt(0) : null;
+        if (!range) return;
+
+        const anchorNode = selection.anchorNode;
+        const focusNode = selection.focusNode;
+        const anchorEl = anchorNode?.nodeType === Node.TEXT_NODE ? anchorNode.parentNode : anchorNode;
+        const focusEl = focusNode?.nodeType === Node.TEXT_NODE ? focusNode.parentNode : focusNode;
+        if (!elements.readingContent.contains(anchorEl) || !elements.readingContent.contains(focusEl)) return;
+
+        const context = extractContextForRange(range);
+        if (!context) return;
+
+        const normalized = normalizeTextToKey(selectedText);
+        if (!normalized) return;
+
+        suppressWordClickUntil = Date.now() + 300;
+
+        if (selectedWordEl) selectedWordEl.classList.remove('word-selected');
+        selectedWordEl = null;
+
+        selectedWord = normalized;
+        selectedWordDisplay = selectedText;
+        selectedWordContext = context;
+        selectedWordAnalysis = getCachedAnalysisForSelectedWord(selectedWord) || null;
+        isSelectedAnalysisLoading = false;
+
+        // Mark constituent words as "clicked" so page-turn auto-marking doesn't advance them.
+        selectedWord.split(' ').forEach((part) => {
+            const token = normalizeWord(part);
+            if (token) clickedWordsOnPage.add(token);
+        });
+
+        switchTab('vocab-analysis');
+
+        if (!selectedWordAnalysis && isAiConfigured()) {
+            queueSelectedWordAnalysis({ debounceMs: 250 });
+        }
+
+        renderVocabularyPanel();
+    }, 0);
 }
 
 function getWordStatus(normalizedWord) {
@@ -688,6 +1019,8 @@ function renderVocabularyPanel() {
 
     const selectedStatus = selectedWord ? getEffectiveWordStatus(selectedWord) : WORD_STATUSES.NEW;
     const selectedEntry = selectedWord ? vocabularyByWord.get(selectedWord) : null;
+    const aiConfigured = isAiConfigured();
+    const canRetryAnalysis = Boolean(selectedWord && !selectedWordAnalysis && !isSelectedAnalysisLoading && aiConfigured);
 
     container.innerHTML = `
         <div class="vocab-panel-controls">
@@ -719,11 +1052,13 @@ function renderVocabularyPanel() {
                 ${selectedStatus !== WORD_STATUSES.LEARNING ? `<button class="btn btn-secondary btn-small" data-action="set-status" data-status="${WORD_STATUSES.LEARNING}">加入学习</button>` : ''}
                 ${selectedStatus !== WORD_STATUSES.KNOWN ? `<button class="btn btn-secondary btn-small" data-action="set-status" data-status="${WORD_STATUSES.KNOWN}">标记已掌握</button>` : ''}
                 ${selectedStatus !== WORD_STATUSES.NEW ? `<button class="btn btn-ghost btn-small" data-action="set-status" data-status="${WORD_STATUSES.NEW}">移除</button>` : ''}
-                ${!selectedWordAnalysis ? `<button class="btn btn-secondary btn-small" data-action="analyze">分析</button>` : ''}
+                ${canRetryAnalysis ? `<button class="btn btn-ghost btn-small" data-action="retry-analysis" title="重试分析">⟳</button>` : ''}
               </div>
             </div>
             <div class="vocab-selected-body" id="selectedWordAnalysisSlot">
-              ${!selectedWordAnalysis ? `<p class="empty-state">点击“分析”获取解释</p>` : ''}
+              ${!selectedWordAnalysis && !isSelectedAnalysisLoading
+        ? `<p class="empty-state">${aiConfigured ? '未分析或分析失败，可点 ⟳ 获取解释' : '请先在设置中配置 AI 以自动分析'}</p>`
+        : ''}
             </div>
           ` : `
             <p class="empty-state">点击正文中的单词开始</p>
@@ -745,55 +1080,18 @@ function renderVocabularyPanel() {
         </div>
     `;
 
-    if (selectedWord && selectedWordAnalysis) {
+    if (selectedWord && (isSelectedAnalysisLoading || selectedWordAnalysis)) {
         const slot = container.querySelector('#selectedWordAnalysisSlot');
         if (slot) {
             slot.innerHTML = '';
-            const card = createWordAnalysisCard(selectedWordDisplay || selectedWord, selectedWordAnalysis, false, selectedEntry?.context || selectedWordContext);
+            const card = createWordAnalysisCard(
+                selectedWordDisplay || selectedWord,
+                selectedWordAnalysis || { word: selectedWordDisplay || selectedWord },
+                Boolean(isSelectedAnalysisLoading && !selectedWordAnalysis),
+                selectedEntry?.context || selectedWordContext
+            );
             slot.appendChild(card);
         }
-    }
-}
-
-async function analyzeSelectedWord() {
-    if (!selectedWord || !selectedWordDisplay) return;
-
-    try {
-        const { analyzeWordInstant } = await import('./ai-service.js');
-        const result = await analyzeWordInstant(selectedWordDisplay, selectedWordContext || { fullContext: '' });
-        selectedWordAnalysis = result;
-
-        // Persist analysis for saved words; keep it in-memory for new words until user saves.
-        const existing = vocabularyByWord.get(selectedWord);
-        if (existing) {
-            const updated = await upsertVocabularyItem({
-                ...existing,
-                bookId: currentBookId,
-                word: selectedWord,
-                displayWord: existing.displayWord || selectedWordDisplay,
-                analysis: result,
-                context: existing.context || selectedWordContext,
-                sourceChapterId: existing.sourceChapterId || currentBook?.chapters?.[currentChapterIndex]?.id || null
-            });
-            vocabularyByWord.set(updated.word, updated);
-        }
-
-        if (getEffectiveWordStatus(selectedWord) === WORD_STATUSES.LEARNING) {
-            const updatedGlobal = await upsertGlobalAnalysis(
-                selectedWord,
-                result,
-                selectedWordContext?.currentSentence || null,
-                selectedWordDisplay
-            );
-            if (updatedGlobal) {
-                globalVocabByWord.set(updatedGlobal.normalizedWord || updatedGlobal.id, updatedGlobal);
-            }
-        }
-    } catch (error) {
-        console.error('Instant analysis error:', error);
-        showNotification('分析失败: ' + error.message, 'error');
-    } finally {
-        renderVocabularyPanel();
     }
 }
 
@@ -934,8 +1232,8 @@ async function handleVocabPanelClick(event) {
         return;
     }
 
-    if (action === 'analyze') {
-        await analyzeSelectedWord();
+    if (action === 'retry-analysis') {
+        queueSelectedWordAnalysis({ debounceMs: 0, force: true });
     }
 }
 
@@ -1237,6 +1535,7 @@ async function switchToReview() {
     elements.bookshelfView.style.display = 'none';
     elements.readerView.style.display = 'none';
     elements.reviewView.style.display = '';
+    if (elements.vocabLibraryView) elements.vocabLibraryView.style.display = 'none';
 
     await refreshGlobalVocabCache();
     await loadReviewSession();
@@ -1361,10 +1660,204 @@ function switchToBookshelf() {
     elements.bookshelfView.style.display = '';
     elements.readerView.style.display = 'none';
     elements.reviewView.style.display = 'none';
+    if (elements.vocabLibraryView) elements.vocabLibraryView.style.display = 'none';
     elements.readerView.classList.remove('page-mode');
 
     // Refresh bookshelf
     refreshBookshelf();
+}
+
+// ============================================
+// Vocabulary Library
+// ============================================
+async function switchToVocabLibrary() {
+    currentView = 'vocab-library';
+    elements.bookshelfView.style.display = 'none';
+    elements.readerView.style.display = 'none';
+    elements.reviewView.style.display = 'none';
+    if (elements.vocabLibraryView) elements.vocabLibraryView.style.display = '';
+
+    await loadVocabLibrary();
+}
+
+async function loadVocabLibrary() {
+    try {
+        await refreshGlobalVocabCache();
+
+        // Get learning items only
+        vocabLibraryItems = Array.from(globalVocabByWord.values())
+            .filter(item => item?.status === 'learning')
+            .sort((a, b) => new Date(b.updatedAt || b.createdAt || 0) - new Date(a.updatedAt || a.createdAt || 0));
+
+        // Calculate stats
+        const learningCount = vocabLibraryItems.length;
+        const dueCount = await countDueCards(new Date());
+        const totalReps = vocabLibraryItems.reduce((sum, item) => sum + (item.reps || 0), 0);
+
+        // Update stats UI
+        if (elements.statLearningCount) elements.statLearningCount.textContent = learningCount;
+        if (elements.statDueCount) elements.statDueCount.textContent = dueCount;
+        if (elements.statTotalReps) elements.statTotalReps.textContent = totalReps;
+
+        // Render grid or empty state
+        renderVocabLibraryGrid();
+    } catch (error) {
+        console.error('Failed to load vocabulary library:', error);
+        showNotification('加载词汇库失败: ' + error.message, 'error');
+    }
+}
+
+function renderVocabLibraryGrid() {
+    if (!elements.vocabLibraryGrid || !elements.vocabLibraryEmpty) return;
+
+    if (vocabLibraryItems.length === 0) {
+        elements.vocabLibraryGrid.style.display = 'none';
+        elements.vocabStatsGrid.style.display = 'none';
+        elements.vocabLibraryEmpty.style.display = '';
+        return;
+    }
+
+    elements.vocabLibraryEmpty.style.display = 'none';
+    elements.vocabStatsGrid.style.display = '';
+    elements.vocabLibraryGrid.style.display = '';
+
+    elements.vocabLibraryGrid.innerHTML = vocabLibraryItems.map(item => {
+        const word = item.displayWord || item.normalizedWord || item.id || '';
+        const normalizedWord = item.normalizedWord || item.id || '';
+        const meaning = item.meaning || '—';
+        const usage = item.usage || '';
+        const context = item.contextSentence || '';
+
+        return `
+            <div class="vocab-library-card" data-word="${escapeHtml(normalizedWord)}">
+                <div class="vocab-library-card-header">
+                    <span class="vocab-library-word">${escapeHtml(word)}</span>
+                    <div class="vocab-library-card-actions">
+                        <button class="btn btn-ghost" data-action="edit" data-word="${escapeHtml(normalizedWord)}" title="编辑">✏️</button>
+                        <button class="btn btn-ghost" data-action="delete" data-word="${escapeHtml(normalizedWord)}" title="删除">🗑️</button>
+                    </div>
+                </div>
+                <div class="vocab-library-card-body">
+                    <div class="vocab-library-row">
+                        <span class="vocab-library-label">含义</span>
+                        <span class="vocab-library-value">${escapeHtml(meaning)}</span>
+                    </div>
+                    ${usage ? `
+                    <div class="vocab-library-row">
+                        <span class="vocab-library-label">用法</span>
+                        <span class="vocab-library-value">${escapeHtml(usage)}</span>
+                    </div>
+                    ` : ''}
+                    ${context ? `
+                    <div class="vocab-library-row">
+                        <span class="vocab-library-label">上下文</span>
+                        <span class="vocab-library-value">${escapeHtml(context)}</span>
+                    </div>
+                    ` : ''}
+                </div>
+            </div>
+        `;
+    }).join('');
+}
+
+function handleVocabLibraryCardClick(event) {
+    const btn = event.target?.closest?.('[data-action]');
+    if (!btn) return;
+
+    const action = btn.dataset.action;
+    const word = btn.dataset.word;
+
+    if (action === 'edit' && word) {
+        openEditVocabModal(word);
+    } else if (action === 'delete' && word) {
+        openDeleteVocabModal(word);
+    }
+}
+
+function openEditVocabModal(normalizedWord) {
+    const item = globalVocabByWord.get(normalizedWord);
+    if (!item) return;
+
+    editingVocabWord = normalizedWord;
+
+    if (elements.editVocabWord) elements.editVocabWord.value = item.displayWord || item.normalizedWord || normalizedWord;
+    if (elements.editVocabMeaning) elements.editVocabMeaning.value = item.meaning || '';
+    if (elements.editVocabUsage) elements.editVocabUsage.value = item.usage || '';
+    if (elements.editVocabContext) elements.editVocabContext.value = item.contextSentence || '';
+    if (elements.editVocabContextualMeaning) elements.editVocabContextualMeaning.value = item.contextualMeaning || '';
+
+    if (elements.editVocabModal) elements.editVocabModal.classList.add('open');
+}
+
+function closeEditVocabModal() {
+    if (elements.editVocabModal) elements.editVocabModal.classList.remove('open');
+    editingVocabWord = null;
+}
+
+async function handleSaveVocabEdit() {
+    if (!editingVocabWord) return;
+
+    const item = globalVocabByWord.get(editingVocabWord);
+    if (!item) {
+        closeEditVocabModal();
+        return;
+    }
+
+    try {
+        const updatedItem = {
+            ...item,
+            meaning: elements.editVocabMeaning?.value?.trim() || item.meaning,
+            usage: elements.editVocabUsage?.value?.trim() || item.usage,
+            contextSentence: elements.editVocabContext?.value?.trim() || item.contextSentence,
+            contextualMeaning: elements.editVocabContextualMeaning?.value?.trim() || item.contextualMeaning,
+            updatedAt: new Date().toISOString()
+        };
+
+        await upsertGlobalVocabItem(updatedItem);
+        globalVocabByWord.set(updatedItem.normalizedWord || updatedItem.id, updatedItem);
+
+        showNotification('词汇已更新', 'success');
+        closeEditVocabModal();
+        await loadVocabLibrary();
+    } catch (error) {
+        console.error('Failed to save vocab edit:', error);
+        showNotification('保存失败: ' + error.message, 'error');
+    }
+}
+
+function openDeleteVocabModal(normalizedWord) {
+    const item = globalVocabByWord.get(normalizedWord);
+    if (!item) return;
+
+    deletingVocabWord = normalizedWord;
+    const displayWord = item.displayWord || item.normalizedWord || normalizedWord;
+
+    if (elements.deleteVocabConfirmText) {
+        elements.deleteVocabConfirmText.textContent = `确定要删除「${displayWord}」吗？此操作无法撤销。`;
+    }
+
+    if (elements.deleteVocabModal) elements.deleteVocabModal.classList.add('open');
+}
+
+function closeDeleteVocabModal() {
+    if (elements.deleteVocabModal) elements.deleteVocabModal.classList.remove('open');
+    deletingVocabWord = null;
+}
+
+async function handleConfirmDeleteVocab() {
+    if (!deletingVocabWord) return;
+
+    try {
+        await deleteGlobalVocabItem(deletingVocabWord);
+        globalVocabByWord.delete(deletingVocabWord);
+
+        showNotification('词汇已删除', 'success');
+        closeDeleteVocabModal();
+        await loadVocabLibrary();
+    } catch (error) {
+        console.error('Failed to delete vocab:', error);
+        showNotification('删除失败: ' + error.message, 'error');
+    }
 }
 
 async function switchToReader(bookId) {
@@ -1400,6 +1893,7 @@ async function switchToReader(bookId) {
         elements.bookshelfView.style.display = 'none';
         elements.readerView.style.display = '';
         elements.reviewView.style.display = 'none';
+        if (elements.vocabLibraryView) elements.vocabLibraryView.style.display = 'none';
         elements.readerView.classList.toggle('page-mode', isPageFlipMode);
 
         await refreshVocabularyCache();

@@ -58,6 +58,7 @@ async function chatCompletion(messages, options = {}) {
             'Authorization': `Bearer ${settings.apiKey}`,
             'Content-Type': 'application/json'
         },
+        signal: options.signal,
         body: JSON.stringify({
             model: settings.model,
             messages: messages,
@@ -128,7 +129,7 @@ ${markedItems.map((item, i) => `${i + 1}. ${item}`).join('\n')}
  * @param {Object} context - Context object with previous, current, and next sentences
  * @returns {Promise<Object>} Analysis result as JSON object
  */
-export async function analyzeWordInstant(word, context) {
+export async function analyzeWordInstant(word, context, options = {}) {
     const settings = getSettings();
     const language = settings.language || '中文';
     
@@ -169,7 +170,7 @@ ${contextText}
         { role: 'user', content: userPrompt }
     ];
     
-    const result = await chatCompletion(messages, { maxTokens: 500, temperature: 0.3 });
+    const result = await chatCompletion(messages, { maxTokens: 500, temperature: 0.3, signal: options.signal });
     
     // Parse JSON response
     try {
