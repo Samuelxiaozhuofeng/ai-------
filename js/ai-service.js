@@ -132,27 +132,64 @@ ${markedItems.map((item, i) => `${i + 1}. ${item}`).join('\n')}
 export async function analyzeWordInstant(word, context, options = {}) {
     const settings = getSettings();
     const language = settings.language || '中文';
+    const bookLanguage = (options.bookLanguage || options.targetLanguage || options.language || 'en').toString();
     
     if (!word) {
         throw new Error('No word to analyze');
     }
-    
-    const systemPrompt = `你是一位专业的语言学习助手。请用${language}快速分析用户标记的词汇或短语。
+
+    const baseNotes = `
+注意：
+1. 只返回JSON，不要添加任何其他文字
+2. 不需要提供例句
+3. 重点关注该词在给定上下文中的具体含义
+4. 如果是短语，按短语整体解释`.trim();
+
+    const systemPromptByBookLanguage = {
+        en: `你是一位专业的英语学习助手。请用${language}快速分析用户标记的英语词汇或短语，并给出中英双语的释义。
 
 你必须以JSON格式返回分析结果，格式如下：
 {
   "word": "原文词汇",
   "partOfSpeech": "词性（如：动词、名词、形容词等）",
-  "meaning": "基本含义",
-  "usage": "用法说明",
+  "meaning": "中文释义 / English gloss（中英双语）",
+  "usage": "用法说明（可包含常见搭配/语域提示）",
   "contextualMeaning": "在当前上下文中的具体含义"
 }
 
-注意：
-1. 只返回JSON，不要添加任何其他文字
-2. 不需要提供例句
-3. 重点关注该词在给定上下文中的具体含义
-4. 如果是短语，按短语整体解释`;
+${baseNotes}`,
+        es: `你是一位专业的西班牙语学习助手。请用${language}快速分析用户标记的西班牙语词汇或短语。
+
+你必须以JSON格式返回分析结果，格式如下：
+{
+  "word": "原文词汇",
+  "partOfSpeech": "词性",
+  "meaning": "基本含义",
+  "conjugation": "若为动词：给出原形、时态/人称/数的变位要点；否则留空字符串",
+  "genderPlural": "若为名词：性别（阳/阴）与复数规则；否则留空字符串",
+  "usage": "用法说明（可包含常见搭配）",
+  "contextualMeaning": "在当前上下文中的具体含义"
+}
+
+${baseNotes}`,
+        ja: `你是一位专业的日语学习助手。请用${language}快速分析用户标记的日语词汇或短语。
+
+你必须以JSON格式返回分析结果，格式如下：
+{
+  "word": "原文词汇",
+  "furigana": "假名读音（若适用）",
+  "partOfSpeech": "词性",
+  "meaning": "基本含义",
+  "kanjiOrigin": "汉字构成/词源要点（若适用）",
+  "politenessLevel": "语体/敬语/礼貌程度（若适用）",
+  "usage": "用法说明（可包含固定搭配/助词提示）",
+  "contextualMeaning": "在当前上下文中的具体含义"
+}
+
+${baseNotes}`
+    };
+
+    const systemPrompt = systemPromptByBookLanguage[bookLanguage] || systemPromptByBookLanguage.en;
 
     const contextText = context.currentSentence || context.fullContext || '';
     
@@ -170,7 +207,7 @@ ${contextText}
         { role: 'user', content: userPrompt }
     ];
     
-    const result = await chatCompletion(messages, { maxTokens: 500, temperature: 0.3, signal: options.signal });
+    const result = await chatCompletion(messages, { maxTokens: 700, temperature: 0.3, signal: options.signal });
     
     // Parse JSON response
     try {

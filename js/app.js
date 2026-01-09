@@ -27,7 +27,10 @@ import {
     getLayout,
     saveLayout,
     getAnkiSettings,
-    saveAnkiSettings
+    saveAnkiSettings,
+    SUPPORTED_LANGUAGES,
+    getFsrsSettings,
+    saveFsrsSettings
 } from './storage.js';
 import {
     getDeckNames,
@@ -55,7 +58,9 @@ import {
     generateBookHash,
     deleteGlobalVocabItem,
     upsertGlobalVocabItem,
-    countDueCards
+    countDueCards,
+    countDueCardsByLanguage,
+    makeGlobalVocabId
 } from './db.js';
 
 // ============================================
@@ -76,7 +81,7 @@ let isPageFlipMode = true;
 let chapterPages = [];
 let currentPageIndex = 0;
 let vocabularyByWord = new Map(); // normalizedWord -> vocab entry
-let globalVocabByWord = new Map(); // normalizedWord -> global vocab entry (learning cards)
+let globalVocabByWord = new Map(); // globalId -> global vocab entry (learning cards)
 let vocabFilter = WORD_STATUSES.LEARNING; // 'seen' | 'learning' | 'known' | 'all'
 let selectedWord = null; // normalized
 let selectedWordDisplay = null; // original casing
@@ -101,6 +106,16 @@ let vocabLibraryItems = [];
 let editingVocabWord = null;
 let deletingVocabWord = null;
 
+// Multi-language bookshelf + review state
+let currentLanguageFilter = 'en';
+let currentReviewLanguage = null; // null for mixed mode
+
+/** @type {File|null} */
+let pendingImportFile = null;
+
+/** @type {((value: string|null) => void) | null} */
+let pendingLanguageSelectResolve = null;
+
 // ============================================
 // DOM Elements
 // ============================================
@@ -117,6 +132,11 @@ const elements = {
     importBtnEmpty: document.getElementById('importBtnEmpty'),
     gridViewBtn: document.getElementById('gridViewBtn'),
     listViewBtn: document.getElementById('listViewBtn'),
+    languageTabs: document.getElementById('languageTabs'),
+    languageTabEn: document.getElementById('languageTabEn'),
+    languageTabEs: document.getElementById('languageTabEs'),
+    languageTabJa: document.getElementById('languageTabJa'),
+    reviewButtonsContainer: document.getElementById('reviewButtonsContainer'),
     reviewBtn: document.getElementById('reviewBtn'),
     themeToggleBtnShelf: document.getElementById('themeToggleBtnShelf'),
     themeIconShelf: document.getElementById('themeIconShelf'),
@@ -208,13 +228,21 @@ const elements = {
     syncNowBtn: document.getElementById('syncNowBtn'),
     syncStatusText: document.getElementById('syncStatusText'),
 
+    // FSRS Settings Form
+    fsrsReviewModeGrouped: document.getElementById('fsrsReviewModeGrouped'),
+    fsrsReviewModeMixed: document.getElementById('fsrsReviewModeMixed'),
+    fsrsRequestRetention: document.getElementById('fsrsRequestRetention'),
+    fsrsRequestRetentionValue: document.getElementById('fsrsRequestRetentionValue'),
+
     // Settings Tabs
     settingsTabAI: document.getElementById('settingsTabAI'),
     settingsTabAnki: document.getElementById('settingsTabAnki'),
     settingsTabSync: document.getElementById('settingsTabSync'),
+    settingsTabFSRS: document.getElementById('settingsTabFSRS'),
     aiSettingsContent: document.getElementById('aiSettingsContent'),
     ankiSettingsContent: document.getElementById('ankiSettingsContent'),
     syncSettingsContent: document.getElementById('syncSettingsContent'),
+    fsrsSettingsContent: document.getElementById('fsrsSettingsContent'),
 
     // Anki Settings Form
     ankiDeckSelect: document.getElementById('ankiDeckSelect'),
@@ -231,6 +259,7 @@ const elements = {
 
     // Review
     backFromReviewBtn: document.getElementById('backFromReviewBtn'),
+    reviewTitle: document.getElementById('reviewTitle'),
     reviewStats: document.getElementById('reviewStats'),
     reviewEmpty: document.getElementById('reviewEmpty'),
     reviewFinishBtn: document.getElementById('reviewFinishBtn'),
@@ -282,7 +311,13 @@ const elements = {
     closeDeleteVocabBtn: document.getElementById('closeDeleteVocabBtn'),
     cancelDeleteVocabBtn: document.getElementById('cancelDeleteVocabBtn'),
     confirmDeleteVocabBtn: document.getElementById('confirmDeleteVocabBtn'),
-    deleteVocabConfirmText: document.getElementById('deleteVocabConfirmText')
+    deleteVocabConfirmText: document.getElementById('deleteVocabConfirmText'),
+
+    // Import: Language Select Modal
+    languageSelectModal: document.getElementById('languageSelectModal'),
+    closeLanguageSelectBtn: document.getElementById('closeLanguageSelectBtn'),
+    cancelLanguageSelectBtn: document.getElementById('cancelLanguageSelectBtn'),
+    languageSelectButtons: document.getElementById('languageSelectButtons')
 };
 
 // ============================================
@@ -304,6 +339,16 @@ async function init() {
 
         // Load settings
         loadSettingsToForm();
+
+        // Restore language filter (bookshelf tabs)
+        try {
+            const stored = localStorage.getItem('language-reader-language-filter');
+            if (stored && Object.prototype.hasOwnProperty.call(SUPPORTED_LANGUAGES, stored)) {
+                currentLanguageFilter = stored;
+            }
+        } catch {
+            // ignore
+        }
 
         // Load books from database
         booksLibrary = await getAllBooks();
@@ -334,6 +379,14 @@ function setupEventListeners() {
     // Bookshelf: View toggle
     elements.gridViewBtn.addEventListener('click', () => setViewMode('grid'));
     elements.listViewBtn.addEventListener('click', () => setViewMode('list'));
+
+    // Bookshelf: Language tabs
+    elements.languageTabs?.addEventListener('click', (e) => {
+        const target = e.target?.closest?.('.language-tab');
+        const language = target?.dataset?.language || '';
+        if (!language || !Object.prototype.hasOwnProperty.call(SUPPORTED_LANGUAGES, language)) return;
+        setLanguageFilter(language);
+    });
 
     // Bookshelf: Theme toggle
     elements.themeToggleBtnShelf.addEventListener('click', toggleTheme);
@@ -448,6 +501,7 @@ function setupEventListeners() {
             closeChapterSelectModal();
             closeEditVocabModal();
             closeDeleteVocabModal();
+            closeLanguageSelectModal(null);
             hideContextMenu();
             if (currentView === 'review' || currentView === 'vocab-library') {
                 switchToBookshelf();
@@ -487,6 +541,7 @@ function setupEventListeners() {
     elements.settingsTabAI.addEventListener('click', () => switchSettingsTab('ai'));
     elements.settingsTabAnki.addEventListener('click', () => switchSettingsTab('anki'));
     elements.settingsTabSync.addEventListener('click', () => switchSettingsTab('sync'));
+    elements.settingsTabFSRS?.addEventListener('click', () => switchSettingsTab('fsrs'));
 
     // Anki settings
     elements.refreshAnkiBtn.addEventListener('click', refreshAnkiOptions);
@@ -497,6 +552,14 @@ function setupEventListeners() {
 
     // Auto Anki toggle
     elements.autoAnkiToggle.addEventListener('change', handleAutoAnkiToggle);
+
+    // FSRS settings
+    elements.fsrsRequestRetention?.addEventListener('input', () => {
+        const value = Number(elements.fsrsRequestRetention.value);
+        if (elements.fsrsRequestRetentionValue) {
+            elements.fsrsRequestRetentionValue.textContent = Number.isFinite(value) ? value.toFixed(2) : '0.90';
+        }
+    });
 
     // Vocabulary Library
     elements.vocabLibraryBtn?.addEventListener('click', switchToVocabLibrary);
@@ -519,6 +582,19 @@ function setupEventListeners() {
     elements.confirmDeleteVocabBtn?.addEventListener('click', handleConfirmDeleteVocab);
     elements.deleteVocabModal?.addEventListener('click', (e) => {
         if (e.target === elements.deleteVocabModal) closeDeleteVocabModal();
+    });
+
+    // Import: Language select modal
+    elements.closeLanguageSelectBtn?.addEventListener('click', () => closeLanguageSelectModal(null));
+    elements.cancelLanguageSelectBtn?.addEventListener('click', () => closeLanguageSelectModal(null));
+    elements.languageSelectModal?.addEventListener('click', (e) => {
+        if (e.target === elements.languageSelectModal) closeLanguageSelectModal(null);
+    });
+    elements.languageSelectButtons?.addEventListener('click', (e) => {
+        const btn = e.target?.closest?.('button[data-language]');
+        const language = btn?.dataset?.language || '';
+        if (!language || !Object.prototype.hasOwnProperty.call(SUPPORTED_LANGUAGES, language)) return;
+        closeLanguageSelectModal(language);
     });
 
     // Load Auto Study state from storage
@@ -671,7 +747,7 @@ function getCachedAnalysisForSelectedWord(normalizedWord, existingEntry = null) 
     const local = existingEntry || (normalizedWord ? vocabularyByWord.get(normalizedWord) : null);
     if (local?.analysis) return local.analysis;
 
-    const global = normalizedWord ? globalVocabByWord.get(normalizedWord) : null;
+    const global = normalizedWord ? getGlobalVocabEntryForWord(normalizedWord, getCurrentBookLanguage()) : null;
     if (global && (global.meaning || global.usage || global.contextualMeaning)) {
         return {
             word: global.displayWord || normalizedWord,
@@ -730,7 +806,7 @@ async function runInstantAnalysisRequest(requestId, normalizedWord, displayWord,
 
     try {
         const { analyzeWordInstant } = await import('./ai-service.js');
-        const result = await analyzeWordInstant(displayWord, context || { fullContext: '' }, { signal });
+        const result = await analyzeWordInstant(displayWord, context || { fullContext: '' }, { signal, bookLanguage: currentBook?.language || currentLanguageFilter });
 
         if (requestId !== analysisRequestSeq) return;
         if (selectedWord !== normalizedWord) return;
@@ -743,6 +819,7 @@ async function runInstantAnalysisRequest(requestId, normalizedWord, displayWord,
             const updated = await upsertVocabularyItem({
                 ...existing,
                 bookId: currentBookId,
+                language: existing.language || currentBook?.language || currentLanguageFilter,
                 word: normalizedWord,
                 displayWord: existing.displayWord || displayWord,
                 analysis: result,
@@ -757,10 +834,11 @@ async function runInstantAnalysisRequest(requestId, normalizedWord, displayWord,
                 normalizedWord,
                 result,
                 context?.currentSentence || null,
-                displayWord
+                displayWord,
+                currentBook?.language || null
             );
             if (updatedGlobal) {
-                globalVocabByWord.set(updatedGlobal.normalizedWord || updatedGlobal.id, updatedGlobal);
+                globalVocabByWord.set(updatedGlobal.id || updatedGlobal.normalizedWord, updatedGlobal);
             }
         }
     } catch (error) {
@@ -904,10 +982,27 @@ function getWordStatus(normalizedWord) {
     return vocabularyByWord.get(normalizedWord)?.status || WORD_STATUSES.NEW;
 }
 
+function getCurrentBookLanguage() {
+    const lang = (currentBook?.language || currentLanguageFilter || 'en').trim();
+    if (Object.prototype.hasOwnProperty.call(SUPPORTED_LANGUAGES, lang)) return lang;
+    return 'en';
+}
+
+function getGlobalVocabKeyForWord(normalizedWord, language = null) {
+    const lang = (typeof language === 'string' ? language : '') || getCurrentBookLanguage();
+    return lang ? makeGlobalVocabId(lang, normalizedWord) : normalizedWord;
+}
+
+function getGlobalVocabEntryForWord(normalizedWord, language = null) {
+    const key = getGlobalVocabKeyForWord(normalizedWord, language);
+    if (!key) return null;
+    return globalVocabByWord.get(key) || null;
+}
+
 function getEffectiveWordStatus(normalizedWord) {
     const local = vocabularyByWord.get(normalizedWord)?.status || null;
     if (local) return local;
-    const global = globalVocabByWord.get(normalizedWord) || null;
+    const global = getGlobalVocabEntryForWord(normalizedWord, getCurrentBookLanguage());
     if (global?.status === 'learning') return WORD_STATUSES.LEARNING;
     return WORD_STATUSES.NEW;
 }
@@ -983,7 +1078,7 @@ async function refreshVocabularyCache() {
 async function refreshGlobalVocabCache() {
     try {
         const items = await listGlobalVocab();
-        globalVocabByWord = new Map(items.map((item) => [item.normalizedWord || item.id, item]));
+        globalVocabByWord = new Map(items.map((item) => [item.id || item.normalizedWord, item]));
     } catch (error) {
         console.warn('Failed to refresh global vocabulary cache:', error);
         globalVocabByWord = new Map();
@@ -1125,7 +1220,7 @@ async function setSelectedWordStatus(nextStatus, options = {}) {
 
     if (nextStatus === WORD_STATUSES.NEW) {
         if (prevStatus === WORD_STATUSES.LEARNING) {
-            await removeBookFromGlobalLearningCard(selectedWord, currentBookId);
+            await removeBookFromGlobalLearningCard(selectedWord, currentBookId, currentBook?.language || null);
             await refreshGlobalVocabCache();
         }
         await deleteVocabularyItem(currentBookId, selectedWord);
@@ -1139,6 +1234,7 @@ async function setSelectedWordStatus(nextStatus, options = {}) {
     const updated = await upsertVocabularyItem({
         ...existing,
         bookId: currentBookId,
+        language: currentBook?.language || currentLanguageFilter,
         word: selectedWord,
         displayWord: existing.displayWord || selectedWordDisplay || selectedWord,
         status: nextStatus,
@@ -1151,15 +1247,16 @@ async function setSelectedWordStatus(nextStatus, options = {}) {
 
     if (nextStatus === WORD_STATUSES.LEARNING) {
         const global = await ensureGlobalLearningCard({
+            language: currentBook?.language || currentLanguageFilter,
             normalizedWord: updated.word,
             displayWord: updated.displayWord || selectedWordDisplay || updated.word,
             bookId: currentBookId,
             analysis: updated.analysis || selectedWordAnalysis || null,
             contextSentence: updated?.context?.currentSentence || selectedWordContext?.currentSentence || null
         });
-        globalVocabByWord.set(global.normalizedWord || global.id, global);
+        globalVocabByWord.set(global.id || global.normalizedWord, global);
     } else if (prevStatus === WORD_STATUSES.LEARNING) {
-        await removeBookFromGlobalLearningCard(updated.word, currentBookId);
+        await removeBookFromGlobalLearningCard(updated.word, currentBookId, currentBook?.language || null);
         await refreshGlobalVocabCache();
     }
 
@@ -1181,18 +1278,19 @@ async function toggleVocabularyStatus(normalizedWord) {
             : entry.status === WORD_STATUSES.SEEN ? WORD_STATUSES.LEARNING
                 : WORD_STATUSES.LEARNING;
 
-    const updated = await upsertVocabularyItem({ ...entry, bookId: currentBookId, word: normalizedWord, status: nextStatus });
+    const updated = await upsertVocabularyItem({ ...entry, bookId: currentBookId, language: currentBook?.language || currentLanguageFilter, word: normalizedWord, status: nextStatus });
     if (nextStatus === WORD_STATUSES.LEARNING) {
         const global = await ensureGlobalLearningCard({
+            language: currentBook?.language || currentLanguageFilter,
             normalizedWord: updated.word,
             displayWord: updated.displayWord || updated.word,
             bookId: currentBookId,
             analysis: updated.analysis || null,
             contextSentence: updated?.context?.currentSentence || null
         });
-        globalVocabByWord.set(global.normalizedWord || global.id, global);
+        globalVocabByWord.set(global.id || global.normalizedWord, global);
     } else if (prevStatus === WORD_STATUSES.LEARNING) {
-        await removeBookFromGlobalLearningCard(updated.word, currentBookId);
+        await removeBookFromGlobalLearningCard(updated.word, currentBookId, currentBook?.language || null);
         await refreshGlobalVocabCache();
     }
     await refreshVocabularyCache();
@@ -1456,6 +1554,7 @@ async function processPageTurn(snapshot) {
         if (status === WORD_STATUSES.NEW && nextCount >= 1) {
             updates.push({
                 bookId: snapshot.bookId,
+                language: currentBook?.language || currentLanguageFilter,
                 word: normalizedWord,
                 displayWord,
                 status: WORD_STATUSES.SEEN,
@@ -1469,6 +1568,7 @@ async function processPageTurn(snapshot) {
             updates.push({
                 ...existing,
                 bookId: snapshot.bookId,
+                language: existing.language || currentBook?.language || currentLanguageFilter,
                 word: normalizedWord,
                 displayWord: existing.displayWord || displayWord,
                 status: WORD_STATUSES.KNOWN,
@@ -1524,7 +1624,14 @@ function goToNextPage() {
 // ============================================
 // View Switching
 // ============================================
-async function switchToReview() {
+async function switchToReview(language = null) {
+    const fsrsSettings = getFsrsSettings();
+    const reviewMode = fsrsSettings?.reviewMode === 'mixed' ? 'mixed' : 'grouped';
+    const normalizedLanguage = language && Object.prototype.hasOwnProperty.call(SUPPORTED_LANGUAGES, language)
+        ? language
+        : (reviewMode === 'grouped' ? currentLanguageFilter : null);
+    currentReviewLanguage = reviewMode === 'grouped' ? normalizedLanguage : null;
+
     // Save current reading progress if coming from reader
     if (currentView === 'reader' && currentBook && currentBookId) {
         saveCurrentProgress();
@@ -1536,6 +1643,11 @@ async function switchToReview() {
     elements.readerView.style.display = 'none';
     elements.reviewView.style.display = '';
     if (elements.vocabLibraryView) elements.vocabLibraryView.style.display = 'none';
+
+    if (elements.reviewTitle) {
+        const langLabel = currentReviewLanguage ? ` · ${SUPPORTED_LANGUAGES[currentReviewLanguage] || currentReviewLanguage}` : '';
+        elements.reviewTitle.textContent = `📚 复习${langLabel}`;
+    }
 
     await refreshGlobalVocabCache();
     await loadReviewSession();
@@ -1553,10 +1665,11 @@ function renderReviewStats(stats) {
 }
 
 async function loadReviewSession() {
-    const stats = await getReviewStats(new Date());
+    const now = new Date();
+    const stats = await getReviewStats(now, currentReviewLanguage);
     renderReviewStats(stats);
 
-    reviewQueue = await getDueCards(new Date());
+    reviewQueue = await getDueCards(now, currentReviewLanguage);
     // Shuffle to avoid always drilling the same ordering
     reviewQueue = reviewQueue.sort(() => Math.random() - 0.5);
     reviewIndex = 0;
@@ -1636,11 +1749,11 @@ async function submitRating(rating) {
     try {
         const updated = await reviewCard(currentReviewItem, rating, new Date());
         reviewQueue[reviewIndex] = updated;
-        globalVocabByWord.set(updated.normalizedWord || updated.id, updated);
+        globalVocabByWord.set(updated.id || updated.normalizedWord, updated);
         currentReviewItem = null;
         reviewIndex += 1;
 
-        renderReviewStats(await getReviewStats(new Date()));
+        renderReviewStats(await getReviewStats(new Date(), currentReviewLanguage));
         await showNextCard();
     } catch (error) {
         console.error('Failed to review card:', error);
@@ -1723,18 +1836,22 @@ function renderVocabLibraryGrid() {
 
     elements.vocabLibraryGrid.innerHTML = vocabLibraryItems.map(item => {
         const word = item.displayWord || item.normalizedWord || item.id || '';
-        const normalizedWord = item.normalizedWord || item.id || '';
+        const language = item?.language || '';
+        const globalId = item.id || makeGlobalVocabId(language, item.normalizedWord || item.id || '');
         const meaning = item.meaning || '—';
         const usage = item.usage || '';
         const context = item.contextSentence || '';
 
         return `
-            <div class="vocab-library-card" data-word="${escapeHtml(normalizedWord)}">
+            <div class="vocab-library-card" data-word="${escapeHtml(globalId)}">
                 <div class="vocab-library-card-header">
-                    <span class="vocab-library-word">${escapeHtml(word)}</span>
+                    <div class="vocab-library-title">
+                        <span class="vocab-library-word">${escapeHtml(word)}</span>
+                        ${language ? `<span class="vocab-language-badge">${escapeHtml(SUPPORTED_LANGUAGES[language] || language)}</span>` : ''}
+                    </div>
                     <div class="vocab-library-card-actions">
-                        <button class="btn btn-ghost" data-action="edit" data-word="${escapeHtml(normalizedWord)}" title="编辑">✏️</button>
-                        <button class="btn btn-ghost" data-action="delete" data-word="${escapeHtml(normalizedWord)}" title="删除">🗑️</button>
+                        <button class="btn btn-ghost" data-action="edit" data-word="${escapeHtml(globalId)}" title="编辑">✏️</button>
+                        <button class="btn btn-ghost" data-action="delete" data-word="${escapeHtml(globalId)}" title="删除">🗑️</button>
                     </div>
                 </div>
                 <div class="vocab-library-card-body">
@@ -1774,13 +1891,13 @@ function handleVocabLibraryCardClick(event) {
     }
 }
 
-function openEditVocabModal(normalizedWord) {
-    const item = globalVocabByWord.get(normalizedWord);
+function openEditVocabModal(globalId) {
+    const item = globalVocabByWord.get(globalId);
     if (!item) return;
 
-    editingVocabWord = normalizedWord;
+    editingVocabWord = globalId;
 
-    if (elements.editVocabWord) elements.editVocabWord.value = item.displayWord || item.normalizedWord || normalizedWord;
+    if (elements.editVocabWord) elements.editVocabWord.value = item.displayWord || item.normalizedWord || globalId;
     if (elements.editVocabMeaning) elements.editVocabMeaning.value = item.meaning || '';
     if (elements.editVocabUsage) elements.editVocabUsage.value = item.usage || '';
     if (elements.editVocabContext) elements.editVocabContext.value = item.contextSentence || '';
@@ -1814,7 +1931,7 @@ async function handleSaveVocabEdit() {
         };
 
         await upsertGlobalVocabItem(updatedItem);
-        globalVocabByWord.set(updatedItem.normalizedWord || updatedItem.id, updatedItem);
+        globalVocabByWord.set(updatedItem.id || editingVocabWord, updatedItem);
 
         showNotification('词汇已更新', 'success');
         closeEditVocabModal();
@@ -1825,12 +1942,12 @@ async function handleSaveVocabEdit() {
     }
 }
 
-function openDeleteVocabModal(normalizedWord) {
-    const item = globalVocabByWord.get(normalizedWord);
+function openDeleteVocabModal(globalId) {
+    const item = globalVocabByWord.get(globalId);
     if (!item) return;
 
-    deletingVocabWord = normalizedWord;
-    const displayWord = item.displayWord || item.normalizedWord || normalizedWord;
+    deletingVocabWord = globalId;
+    const displayWord = item.displayWord || item.normalizedWord || globalId;
 
     if (elements.deleteVocabConfirmText) {
         elements.deleteVocabConfirmText.textContent = `确定要删除「${displayWord}」吗？此操作无法撤销。`;
@@ -1920,26 +2037,151 @@ async function refreshBookshelf() {
     renderBookshelf();
 }
 
+function setLanguageFilter(language) {
+    if (!Object.prototype.hasOwnProperty.call(SUPPORTED_LANGUAGES, language)) return;
+    currentLanguageFilter = language;
+    try {
+        localStorage.setItem('language-reader-language-filter', language);
+    } catch {
+        // ignore
+    }
+    renderBookshelf();
+}
+
+function renderLanguageTabs() {
+    const counts = { en: 0, es: 0, ja: 0 };
+    booksLibrary.forEach((book) => {
+        const lang = book?.language;
+        if (lang && Object.prototype.hasOwnProperty.call(counts, lang)) counts[lang] += 1;
+    });
+
+    const tabs = [
+        { lang: 'en', el: elements.languageTabEn },
+        { lang: 'es', el: elements.languageTabEs },
+        { lang: 'ja', el: elements.languageTabJa }
+    ];
+    tabs.forEach(({ lang, el }) => {
+        if (!el) return;
+        const count = counts[lang] || 0;
+        el.classList.toggle('active', lang === currentLanguageFilter);
+        el.classList.toggle('is-empty', count === 0);
+        el.setAttribute('aria-disabled', count === 0 ? 'true' : 'false');
+        el.title = `${SUPPORTED_LANGUAGES[lang] || lang} (${count})`;
+    });
+}
+
+function setBookshelfEmptyMessage({ hasAnyBooks }) {
+    const titleEl = elements.emptyBookshelf?.querySelector?.('h2');
+    const descEl = elements.emptyBookshelf?.querySelector?.('p');
+    if (!titleEl || !descEl) return;
+
+    if (!hasAnyBooks) {
+        titleEl.textContent = '书架空空如也';
+        descEl.textContent = '导入 EPUB 书籍开始您的阅读之旅';
+        return;
+    }
+
+    titleEl.textContent = '该语言暂无书籍';
+    descEl.textContent = '切换标签或导入该语言的 EPUB 书籍';
+}
+
+function getBooksRenderRoot() {
+    if (!elements.booksContainer) return null;
+    let root = elements.booksContainer.querySelector('#booksRenderRoot');
+    if (!root) {
+        root = document.createElement('div');
+        root.id = 'booksRenderRoot';
+        elements.booksContainer.prepend(root);
+    }
+    return root;
+}
+
 function renderBookshelf() {
-    if (booksLibrary.length === 0) {
-        elements.emptyBookshelf.style.display = '';
+    renderLanguageTabs();
+    void refreshBookshelfReviewButtons();
+
+    const hasAnyBooks = booksLibrary.length > 0;
+    const filteredBooks = booksLibrary.filter((book) => book?.language === currentLanguageFilter);
+    const hasFiltered = filteredBooks.length > 0;
+
+    setBookshelfEmptyMessage({ hasAnyBooks });
+    elements.emptyBookshelf.style.display = (!hasAnyBooks || !hasFiltered) ? '' : 'none';
+
+    if (!hasAnyBooks || !hasFiltered) {
+        // Keep empty state visible; clear any stale book list markup.
+        const root = getBooksRenderRoot();
+        if (root) root.innerHTML = '';
         return;
     }
 
     elements.emptyBookshelf.style.display = 'none';
 
     if (viewMode === 'grid') {
-        renderBooksGrid();
+        renderBooksGrid(filteredBooks);
     } else {
-        renderBooksList();
+        renderBooksList(filteredBooks);
     }
 }
 
-function renderBooksGrid() {
-    const container = elements.booksContainer;
+async function refreshBookshelfReviewButtons() {
+    if (!elements.reviewButtonsContainer || !elements.reviewBtn) return;
+
+    const now = new Date();
+    const fsrsSettings = getFsrsSettings();
+    const reviewMode = fsrsSettings?.reviewMode === 'mixed' ? 'mixed' : 'grouped';
+
+    try {
+        if (reviewMode === 'mixed') {
+            const due = await countDueCards(now);
+            elements.reviewButtonsContainer.innerHTML = '';
+            elements.reviewBtn.style.display = '';
+            elements.reviewBtn.disabled = due === 0;
+            elements.reviewBtn.innerHTML = `<span class="icon">🗓️</span> 复习 (${due})`;
+            return;
+        }
+
+        const [dueEn, dueEs, dueJa] = await Promise.all([
+            countDueCardsByLanguage(now, 'en'),
+            countDueCardsByLanguage(now, 'es'),
+            countDueCardsByLanguage(now, 'ja')
+        ]);
+
+        const entries = [
+            { lang: 'en', due: dueEn },
+            { lang: 'es', due: dueEs },
+            { lang: 'ja', due: dueJa }
+        ].filter((it) => (it?.due || 0) > 0);
+
+        elements.reviewBtn.style.display = 'none';
+
+        if (entries.length === 0) {
+            elements.reviewButtonsContainer.innerHTML = '';
+            return;
+        }
+
+        elements.reviewButtonsContainer.innerHTML = entries.map(({ lang, due }) => `
+            <button class="btn btn-secondary" data-action="review-language" data-language="${lang}">
+                <span class="icon">🗓️</span> 复习${escapeHtml(SUPPORTED_LANGUAGES[lang] || lang)} (${due})
+            </button>
+        `).join('');
+
+        elements.reviewButtonsContainer.querySelectorAll('button[data-action="review-language"]').forEach((btn) => {
+            btn.addEventListener('click', () => {
+                const lang = btn.dataset.language || null;
+                switchToReview(lang);
+            });
+        });
+    } catch (error) {
+        console.warn('Failed to refresh review buttons:', error);
+    }
+}
+
+function renderBooksGrid(books) {
+    const container = getBooksRenderRoot();
+    if (!container) return;
     container.innerHTML = `
         <div class="books-grid">
-            ${booksLibrary.map((book, index) => `
+            ${(books || []).map((book, index) => `
                 <div class="book-card" data-book-id="${book.id}" style="animation-delay: ${index * 0.05}s">
                     <div class="book-cover">
                         ${book.cover
@@ -1978,11 +2220,12 @@ function renderBooksGrid() {
     });
 }
 
-function renderBooksList() {
-    const container = elements.booksContainer;
+function renderBooksList(books) {
+    const container = getBooksRenderRoot();
+    if (!container) return;
     container.innerHTML = `
         <div class="books-list">
-            ${booksLibrary.map((book, index) => `
+            ${(books || []).map((book, index) => `
                 <div class="book-list-item" data-book-id="${book.id}" style="animation-delay: ${index * 0.03}s">
                     <div class="book-list-cover">
                         ${book.cover
@@ -2133,11 +2376,54 @@ async function handleDeleteBook() {
 // ============================================
 // File Import
 // ============================================
+function openLanguageSelectModal(file) {
+    pendingImportFile = file || null;
+    if (!elements.languageSelectModal) {
+        return Promise.resolve('en');
+    }
+
+    if (pendingLanguageSelectResolve) {
+        try { pendingLanguageSelectResolve(null); } catch { /* ignore */ }
+        pendingLanguageSelectResolve = null;
+    }
+
+    elements.languageSelectModal.classList.add('open');
+    return new Promise((resolve) => {
+        pendingLanguageSelectResolve = resolve;
+    });
+}
+
+function closeLanguageSelectModal(selectedLanguage) {
+    if (elements.languageSelectModal) {
+        elements.languageSelectModal.classList.remove('open');
+    }
+    pendingImportFile = null;
+    const resolve = pendingLanguageSelectResolve;
+    pendingLanguageSelectResolve = null;
+    try {
+        resolve?.(selectedLanguage ?? null);
+    } catch {
+        // ignore
+    }
+}
+
 async function handleFileImport(event) {
     const file = event.target.files?.[0];
     if (!file) return;
 
     try {
+        if (typeof window !== 'undefined' && typeof window.JSZip === 'undefined') {
+            showNotification('导入失败：JSZip 未加载（请确保网络可访问 CDN，或将 JSZip 放到本地引用）', 'error');
+            elements.fileInput.value = '';
+            return;
+        }
+
+        const selectedLanguage = await openLanguageSelectModal(file);
+        if (!selectedLanguage) {
+            elements.fileInput.value = '';
+            return;
+        }
+
         showLoading('正在解析 EPUB...');
 
         const parsedBook = await parseEpub(file);
@@ -2159,6 +2445,7 @@ async function handleFileImport(event) {
             id: bookId,
             title: parsedBook.title,
             cover: parsedBook.cover,
+            language: selectedLanguage,
             chapters: parsedBook.chapters,
             currentChapter: 0,
             marks: {}
@@ -2166,6 +2453,8 @@ async function handleFileImport(event) {
 
         hideLoading();
         showNotification(`成功导入: ${parsedBook.title}`, 'success');
+
+        setLanguageFilter(selectedLanguage);
 
         // Switch to reader
         switchToReader(bookId);
@@ -2332,10 +2621,40 @@ function createWordAnalysisCard(word, analysis, isLoading, context = null) {
             ${analysis.partOfSpeech ? `<span class="vocab-card-pos">${escapeHtml(analysis.partOfSpeech)}</span>` : ''}
         </div>
         <div class="vocab-card-body">
+            ${analysis.furigana ? `
+                <div class="vocab-card-row">
+                    <div class="vocab-card-label">读音</div>
+                    <div class="vocab-card-value">${escapeHtml(analysis.furigana)}</div>
+                </div>
+            ` : ''}
             ${analysis.meaning ? `
                 <div class="vocab-card-row">
                     <div class="vocab-card-label">含义</div>
                     <div class="vocab-card-value">${escapeHtml(analysis.meaning)}</div>
+                </div>
+            ` : ''}
+            ${analysis.kanjiOrigin ? `
+                <div class="vocab-card-row">
+                    <div class="vocab-card-label">词源</div>
+                    <div class="vocab-card-value">${escapeHtml(analysis.kanjiOrigin)}</div>
+                </div>
+            ` : ''}
+            ${analysis.politenessLevel ? `
+                <div class="vocab-card-row">
+                    <div class="vocab-card-label">语体</div>
+                    <div class="vocab-card-value">${escapeHtml(analysis.politenessLevel)}</div>
+                </div>
+            ` : ''}
+            ${analysis.conjugation ? `
+                <div class="vocab-card-row">
+                    <div class="vocab-card-label">变位</div>
+                    <div class="vocab-card-value">${escapeHtml(analysis.conjugation)}</div>
+                </div>
+            ` : ''}
+            ${analysis.genderPlural ? `
+                <div class="vocab-card-row">
+                    <div class="vocab-card-label">性数</div>
+                    <div class="vocab-card-value">${escapeHtml(analysis.genderPlural)}</div>
                 </div>
             ` : ''}
             ${analysis.usage ? `
@@ -2550,6 +2869,17 @@ function loadSettingsToForm() {
     elements.backendUrl.value = settings.backendUrl || '';
     elements.syncEnabledToggle.checked = !!settings.syncEnabled;
 
+    const fsrsSettings = getFsrsSettings();
+    const reviewMode = fsrsSettings?.reviewMode === 'mixed' ? 'mixed' : 'grouped';
+    if (elements.fsrsReviewModeGrouped) elements.fsrsReviewModeGrouped.checked = reviewMode === 'grouped';
+    if (elements.fsrsReviewModeMixed) elements.fsrsReviewModeMixed.checked = reviewMode === 'mixed';
+    if (elements.fsrsRequestRetention) {
+        const value = Number(fsrsSettings?.requestRetention);
+        const clamped = Number.isFinite(value) ? Math.max(0.7, Math.min(0.97, value)) : 0.9;
+        elements.fsrsRequestRetention.value = clamped.toFixed(2);
+        if (elements.fsrsRequestRetentionValue) elements.fsrsRequestRetentionValue.textContent = clamped.toFixed(2);
+    }
+
     // If model is saved, add it as an option
     if (settings.model) {
         const option = document.createElement('option');
@@ -2689,11 +3019,13 @@ function switchSettingsTab(tabName) {
     elements.settingsTabAI.classList.toggle('active', tabName === 'ai');
     elements.settingsTabAnki.classList.toggle('active', tabName === 'anki');
     elements.settingsTabSync.classList.toggle('active', tabName === 'sync');
+    elements.settingsTabFSRS?.classList.toggle('active', tabName === 'fsrs');
 
     // Update tab content
     elements.aiSettingsContent.classList.toggle('active', tabName === 'ai');
     elements.ankiSettingsContent.classList.toggle('active', tabName === 'anki');
     elements.syncSettingsContent.classList.toggle('active', tabName === 'sync');
+    elements.fsrsSettingsContent?.classList.toggle('active', tabName === 'fsrs');
 
     // If switching to Anki tab, try to load options
     if (tabName === 'anki') {
@@ -2915,6 +3247,10 @@ function handleSaveSettings() {
     };
 
     if (saveSettings(settings)) {
+        const fsrsReviewMode = elements.fsrsReviewModeMixed?.checked ? 'mixed' : 'grouped';
+        const requestRetention = Number(elements.fsrsRequestRetention?.value);
+        saveFsrsSettings({ reviewMode: fsrsReviewMode, requestRetention });
+
         // Also save Anki settings
         const ankiSettings = {
             deckName: elements.ankiDeckSelect.value,
@@ -2933,6 +3269,7 @@ function handleSaveSettings() {
 
         showNotification('设置已保存', 'success');
         closeSettingsModal();
+        void refreshBookshelfReviewButtons();
 
         // Restart background sync according to new settings
         stopBackgroundSync();

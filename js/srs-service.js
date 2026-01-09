@@ -4,12 +4,16 @@
  */
 
 import { normalizeWord } from './word-status.js';
+import { getFsrsSettings } from './storage.js';
 import {
   countDueCards,
+  countDueCardsByLanguage,
   countGlobalVocabByStatus,
+  countGlobalVocabByStatusAndLanguage,
   deleteGlobalVocabItem,
   getGlobalVocabItem,
   listDueCards,
+  listDueCardsByLanguage,
   listGlobalVocab,
   upsertGlobalVocabItem
 } from './db.js';
@@ -83,14 +87,22 @@ function fsrsCardToFields(card) {
   };
 }
 
-function getScheduler(mod) {
+function getRequestRetention() {
+  const settings = getFsrsSettings();
+  const value = Number(settings?.requestRetention);
+  if (!Number.isFinite(value)) return 0.9;
+  return Math.max(0.7, Math.min(0.97, value));
+}
+
+function getScheduler(mod, requestRetention = 0.9) {
   if (typeof mod?.FSRS === 'function') {
     const instance = new mod.FSRS();
     if (typeof instance?.repeat === 'function') return instance;
   }
 
   if (typeof mod?.fsrs === 'function') {
-    const params = typeof mod?.generatorParameters === 'function' ? mod.generatorParameters({}) : undefined;
+    const config = { request_retention: requestRetention, requestRetention };
+    const params = typeof mod?.generatorParameters === 'function' ? mod.generatorParameters(config) : config;
     const scheduler = mod.fsrs(params);
     if (typeof scheduler?.repeat === 'function') return scheduler;
   }
@@ -169,16 +181,18 @@ export async function ensureFsrsCardFields(item) {
 
 /**
  * Add/ensure a learning card in the global vocabulary store.
- * @param {{normalizedWord:string, displayWord?:string, bookId?:string|null, analysis?:any|null, contextSentence?:string|null}} params
+ * @param {{language:string, normalizedWord:string, displayWord?:string, bookId?:string|null, analysis?:any|null, contextSentence?:string|null}} params
  * @returns {Promise<any>}
  */
 export async function ensureGlobalLearningCard(params) {
+  const language = typeof params?.language === 'string' ? params.language.trim() : '';
+  if (!language) throw new Error('Invalid language');
   const normalized = normalizeWord(params?.normalizedWord || '');
   if (!normalized) throw new Error('Invalid word');
 
   const now = new Date();
   const nowIso = now.toISOString();
-  const existing = await getGlobalVocabItem(normalized);
+  const existing = await getGlobalVocabItem(normalized, language);
   const existingSourceBooks = Array.isArray(existing?.sourceBooks) ? existing.sourceBooks : [];
   const nextSourceBooks = params?.bookId && !existingSourceBooks.includes(params.bookId)
     ? [...existingSourceBooks, params.bookId]
@@ -187,7 +201,7 @@ export async function ensureGlobalLearningCard(params) {
   const analysisFields = normalizeAnalysisFields(params?.analysis);
   const merged = await ensureFsrsCardFields({
     ...(existing || {}),
-    id: normalized,
+    language,
     normalizedWord: normalized,
     displayWord: existing?.displayWord || params?.displayWord || normalized,
     status: 'learning',
@@ -217,18 +231,20 @@ export async function ensureGlobalLearningCard(params) {
  * Remove a book from a global learning card; delete card if no sources remain.
  * @param {string} normalizedWord
  * @param {string} bookId
+ * @param {string|null} [language]
  * @returns {Promise<void>}
  */
-export async function removeBookFromGlobalLearningCard(normalizedWord, bookId) {
+export async function removeBookFromGlobalLearningCard(normalizedWord, bookId, language = null) {
   const normalized = normalizeWord(normalizedWord || '');
   if (!normalized || !bookId) return;
-  const existing = await getGlobalVocabItem(normalized);
+  const lang = typeof language === 'string' ? language.trim() : '';
+  const existing = lang ? await getGlobalVocabItem(normalized, lang) : await getGlobalVocabItem(normalized);
   if (!existing) return;
 
   const sourceBooks = Array.isArray(existing.sourceBooks) ? existing.sourceBooks : [];
   const nextSourceBooks = sourceBooks.filter((id) => id !== bookId);
   if (nextSourceBooks.length === 0) {
-    await deleteGlobalVocabItem(normalized);
+    await deleteGlobalVocabItem(normalized, lang || null);
     return;
   }
 
@@ -245,12 +261,14 @@ export async function removeBookFromGlobalLearningCard(normalizedWord, bookId) {
  * @param {any} analysis
  * @param {string|null} contextSentence
  * @param {string|null} displayWord
+ * @param {string|null} [language]
  * @returns {Promise<any|null>}
  */
-export async function upsertGlobalAnalysis(normalizedWord, analysis, contextSentence = null, displayWord = null) {
+export async function upsertGlobalAnalysis(normalizedWord, analysis, contextSentence = null, displayWord = null, language = null) {
   const normalized = normalizeWord(normalizedWord || '');
   if (!normalized) return null;
-  const existing = await getGlobalVocabItem(normalized);
+  const lang = typeof language === 'string' ? language.trim() : '';
+  const existing = lang ? await getGlobalVocabItem(normalized, lang) : await getGlobalVocabItem(normalized);
   if (!existing) return null;
 
   const analysisFields = normalizeAnalysisFields(analysis);
@@ -270,8 +288,8 @@ export async function upsertGlobalAnalysis(normalizedWord, analysis, contextSent
  * @param {Date} [now]
  * @returns {Promise<Array<any>>}
  */
-export async function getDueCards(now = new Date()) {
-  const due = await listDueCards(now);
+export async function getDueCards(now = new Date(), language = null) {
+  const due = language ? await listDueCardsByLanguage(now, language) : await listDueCards(now);
   if (!due.length) return [];
 
   const hydrated = await Promise.all(due.map((it) => ensureFsrsCardFields(it)));
@@ -286,13 +304,14 @@ export async function getDueCards(now = new Date()) {
  * @param {Date} [now]
  * @returns {Promise<{due:number,new:number,total:number}>}
  */
-export async function getReviewStats(now = new Date()) {
+export async function getReviewStats(now = new Date(), language = null) {
   const [due, total, all] = await Promise.all([
-    countDueCards(now),
-    countGlobalVocabByStatus('learning'),
+    language ? countDueCardsByLanguage(now, language) : countDueCards(now),
+    language ? countGlobalVocabByStatusAndLanguage('learning', language) : countGlobalVocabByStatus('learning'),
     listGlobalVocab()
   ]);
-  const newCount = (all || []).filter((it) => it?.status === 'learning' && (it?.state === 0 || it?.reps === 0)).length;
+  const filtered = language ? (all || []).filter((it) => it?.language === language) : (all || []);
+  const newCount = filtered.filter((it) => it?.status === 'learning' && (it?.state === 0 || it?.reps === 0)).length;
   return { due, new: newCount, total };
 }
 
@@ -309,7 +328,7 @@ export async function previewNextIntervals(item, now = new Date()) {
   try {
     const mod = await loadTsFsrs();
     const Rating = getRatingConstants(mod);
-    const scheduler = getScheduler(mod);
+    const scheduler = getScheduler(mod, getRequestRetention());
     const card = globalItemToFsrsCard(normalizedItem, now);
     const result = scheduler.repeat(card, now);
 
@@ -347,7 +366,7 @@ export async function reviewCard(item, rating, now = new Date()) {
 
   const mod = await loadTsFsrs();
   const Rating = getRatingConstants(mod);
-  const scheduler = getScheduler(mod);
+  const scheduler = getScheduler(mod, getRequestRetention());
 
   const ratingValue =
     rating === 'again' ? Rating.Again :

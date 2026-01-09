@@ -6,7 +6,7 @@
 import { makeVocabId, normalizeWord } from './word-status.js';
 
 const DB_NAME = 'LanguageReaderDB';
-const DB_VERSION = 3;
+const DB_VERSION = 4;
 const STORE_BOOKS = 'books';
 const STORE_VOCABULARY = 'vocabulary';
 const STORE_PROGRESS = 'progress';
@@ -49,6 +49,7 @@ export async function initDB() {
                 store.createIndex('title', 'title', { unique: false });
                 store.createIndex('addedAt', 'addedAt', { unique: false });
                 store.createIndex('lastReadAt', 'lastReadAt', { unique: false });
+                store.createIndex('language', 'language', { unique: false });
                 console.log('📚 Created books store');
             }
 
@@ -59,6 +60,7 @@ export async function initDB() {
                 store.createIndex('status', 'status', { unique: false });
                 store.createIndex('bookId_status', ['bookId', 'status'], { unique: false });
                 store.createIndex('updatedAt', 'updatedAt', { unique: false });
+                store.createIndex('language', 'language', { unique: false });
                 console.log('📚 Created vocabulary store');
             }
 
@@ -76,7 +78,38 @@ export async function initDB() {
                 store.createIndex('due', 'due', { unique: false });
                 store.createIndex('status_due', ['status', 'due'], { unique: false });
                 store.createIndex('updatedAt', 'updatedAt', { unique: false });
+                store.createIndex('language', 'language', { unique: false });
+                store.createIndex('status_language', ['status', 'language'], { unique: false });
+                store.createIndex('status_language_due', ['status', 'language', 'due'], { unique: false });
                 console.log('📚 Created global vocabulary store');
+            }
+
+            // Ensure indexes exist for upgraded stores
+            if (transaction && database.objectStoreNames.contains(STORE_BOOKS)) {
+                const store = transaction.objectStore(STORE_BOOKS);
+                if (!store.indexNames.contains('language')) {
+                    store.createIndex('language', 'language', { unique: false });
+                }
+            }
+
+            if (transaction && database.objectStoreNames.contains(STORE_VOCABULARY)) {
+                const store = transaction.objectStore(STORE_VOCABULARY);
+                if (!store.indexNames.contains('language')) {
+                    store.createIndex('language', 'language', { unique: false });
+                }
+            }
+
+            if (transaction && database.objectStoreNames.contains(STORE_GLOBAL_VOCAB)) {
+                const store = transaction.objectStore(STORE_GLOBAL_VOCAB);
+                if (!store.indexNames.contains('language')) {
+                    store.createIndex('language', 'language', { unique: false });
+                }
+                if (!store.indexNames.contains('status_language')) {
+                    store.createIndex('status_language', ['status', 'language'], { unique: false });
+                }
+                if (!store.indexNames.contains('status_language_due')) {
+                    store.createIndex('status_language_due', ['status', 'language', 'due'], { unique: false });
+                }
             }
 
             // Migration: marks/vocabCards -> vocabulary entries, chapter -> progress
@@ -234,6 +267,46 @@ export async function initDB() {
                     };
                     getReq.onerror = () => cursor.continue();
                 };
+            }
+
+            // Migration: legacy data cleanup for multi-language support (no language field)
+            if (oldVersion < 4 && transaction && database.objectStoreNames.contains(STORE_BOOKS)) {
+                const booksStore = transaction.objectStore(STORE_BOOKS);
+                const vocabStore = database.objectStoreNames.contains(STORE_VOCABULARY) ? transaction.objectStore(STORE_VOCABULARY) : null;
+                const progressStore = database.objectStoreNames.contains(STORE_PROGRESS) ? transaction.objectStore(STORE_PROGRESS) : null;
+                const globalStore = database.objectStoreNames.contains(STORE_GLOBAL_VOCAB) ? transaction.objectStore(STORE_GLOBAL_VOCAB) : null;
+
+                let didCleanup = false;
+                const cleanupAll = () => {
+                    if (didCleanup) return;
+                    didCleanup = true;
+                    try { booksStore.clear(); } catch { /* ignore */ }
+                    try { vocabStore?.clear(); } catch { /* ignore */ }
+                    try { progressStore?.clear(); } catch { /* ignore */ }
+                    try { globalStore?.clear(); } catch { /* ignore */ }
+                    console.log('🧹 Cleared legacy data (missing language fields)');
+                };
+
+                const scanForMissingLanguage = (store) => {
+                    if (!store) return;
+                    const cursorRequest = store.openCursor();
+                    cursorRequest.onsuccess = () => {
+                        if (didCleanup) return;
+                        const cursor = cursorRequest.result;
+                        if (!cursor) return;
+                        const record = cursor.value;
+                        const language = record?.language;
+                        if (typeof language !== 'string' || !language.trim()) {
+                            cleanupAll();
+                            return;
+                        }
+                        cursor.continue();
+                    };
+                };
+
+                scanForMissingLanguage(booksStore);
+                scanForMissingLanguage(vocabStore);
+                scanForMissingLanguage(globalStore);
             }
         };
     });
@@ -405,17 +478,54 @@ export async function upsertVocabularyItems(items) {
 }
 
 /**
- * Get a global vocabulary item by normalized word.
- * @param {string} normalizedWord
+ * Create a stable ID for a global vocab item (unique per language + normalized word).
+ * @param {string} language
+ * @param {string} word
+ * @returns {string}
+ */
+export function makeGlobalVocabId(language, word) {
+    const lang = typeof language === 'string' ? language.trim() : '';
+    const normalized = normalizeWord(word || '');
+    if (!lang || !normalized) return normalized;
+    return `${lang}:${normalized}`;
+}
+
+function parseGlobalVocabId(id) {
+    const raw = typeof id === 'string' ? id : '';
+    const match = raw.match(/^([a-z]{2}):(.+)$/i);
+    if (!match) return { language: '', normalizedWord: '' };
+    return { language: match[1].toLowerCase(), normalizedWord: match[2] };
+}
+
+function normalizeGlobalVocabKey(idOrWord, language = null) {
+    const raw = typeof idOrWord === 'string' ? idOrWord.trim() : '';
+    if (!raw) return '';
+
+    const parsed = parseGlobalVocabId(raw);
+    if (parsed.language && parsed.normalizedWord) {
+        return makeGlobalVocabId(parsed.language, parsed.normalizedWord);
+    }
+
+    const normalized = normalizeWord(raw);
+    if (!normalized) return '';
+
+    const lang = typeof language === 'string' ? language.trim() : '';
+    return lang ? makeGlobalVocabId(lang, normalized) : normalized;
+}
+
+/**
+ * Get a global vocabulary item by id or (language + word).
+ * @param {string} idOrWord
+ * @param {string|null} [language]
  * @returns {Promise<Object|null>}
  */
-export async function getGlobalVocabItem(normalizedWord) {
+export async function getGlobalVocabItem(idOrWord, language = null) {
     return new Promise((resolve, reject) => {
         if (!db) {
             reject(new Error('Database not initialized'));
             return;
         }
-        const key = normalizeWord(normalizedWord);
+        const key = normalizeGlobalVocabKey(idOrWord, language);
         if (!key) {
             resolve(null);
             return;
@@ -447,7 +557,7 @@ export async function listGlobalVocab() {
 }
 
 /**
- * Upsert a global vocabulary item (keyed by normalized word).
+ * Upsert a global vocabulary item (keyed by language + normalized word).
  * @param {Object} item
  * @returns {Promise<Object>}
  */
@@ -457,7 +567,10 @@ export async function upsertGlobalVocabItem(item) {
             reject(new Error('Database not initialized'));
             return;
         }
-        const normalizedWord = normalizeWord(item?.normalizedWord || item?.id || item?.word || '');
+
+        const parsed = parseGlobalVocabId(item?.id);
+        const language = (typeof item?.language === 'string' ? item.language.trim() : '') || parsed.language || '';
+        const normalizedWord = normalizeWord(item?.normalizedWord || item?.word || parsed.normalizedWord || item?.id || '');
         if (!normalizedWord) {
             reject(new Error('Invalid global vocabulary item'));
             return;
@@ -466,9 +579,11 @@ export async function upsertGlobalVocabItem(item) {
         const now = new Date().toISOString();
         const updatedAt = typeof item.updatedAt === 'string' && item.updatedAt ? item.updatedAt : now;
         const createdAt = typeof item.createdAt === 'string' && item.createdAt ? item.createdAt : updatedAt;
+        const id = language ? makeGlobalVocabId(language, normalizedWord) : normalizedWord;
         const record = {
             ...item,
-            id: normalizedWord,
+            id,
+            language: language || item?.language || null,
             normalizedWord,
             updatedAt,
             createdAt
@@ -484,16 +599,17 @@ export async function upsertGlobalVocabItem(item) {
 
 /**
  * Delete a global vocabulary item.
- * @param {string} normalizedWord
+ * @param {string} idOrWord
+ * @param {string|null} [language]
  * @returns {Promise<boolean>}
  */
-export async function deleteGlobalVocabItem(normalizedWord) {
+export async function deleteGlobalVocabItem(idOrWord, language = null) {
     return new Promise((resolve, reject) => {
         if (!db) {
             reject(new Error('Database not initialized'));
             return;
         }
-        const key = normalizeWord(normalizedWord);
+        const key = normalizeGlobalVocabKey(idOrWord, language);
         if (!key) {
             resolve(true);
             return;
@@ -541,6 +657,46 @@ export async function listDueCards(now) {
 }
 
 /**
+ * List due global vocabulary cards for a given language (learning + language + due <= now).
+ * @param {Date} now
+ * @param {string} language
+ * @returns {Promise<Array>}
+ */
+export async function listDueCardsByLanguage(now, language) {
+    return new Promise((resolve, reject) => {
+        if (!db) {
+            reject(new Error('Database not initialized'));
+            return;
+        }
+        const lang = typeof language === 'string' ? language.trim() : '';
+        if (!lang) {
+            resolve([]);
+            return;
+        }
+
+        const nowIso = (now instanceof Date ? now : new Date()).toISOString();
+        const transaction = db.transaction([STORE_GLOBAL_VOCAB], 'readonly');
+        const store = transaction.objectStore(STORE_GLOBAL_VOCAB);
+
+        if (!store.indexNames.contains('status_language_due')) {
+            const req = store.getAll();
+            req.onsuccess = () => {
+                const all = req.result || [];
+                resolve(all.filter((it) => it?.status === 'learning' && it?.language === lang && typeof it?.due === 'string' && it.due <= nowIso));
+            };
+            req.onerror = () => reject(req.error);
+            return;
+        }
+
+        const index = store.index('status_language_due');
+        const range = IDBKeyRange.bound(['learning', lang, ''], ['learning', lang, nowIso]);
+        const request = index.getAll(range);
+        request.onsuccess = () => resolve(request.result || []);
+        request.onerror = () => reject(request.error);
+    });
+}
+
+/**
  * Count global vocabulary items by status.
  * @param {string} status
  * @returns {Promise<number>}
@@ -561,6 +717,39 @@ export async function countGlobalVocabByStatus(status) {
         }
         const index = store.index('status');
         const request = index.count(status);
+        request.onsuccess = () => resolve(request.result || 0);
+        request.onerror = () => reject(request.error);
+    });
+}
+
+/**
+ * Count global vocabulary items by status for a given language.
+ * @param {string} status
+ * @param {string} language
+ * @returns {Promise<number>}
+ */
+export async function countGlobalVocabByStatusAndLanguage(status, language) {
+    return new Promise((resolve, reject) => {
+        if (!db) {
+            reject(new Error('Database not initialized'));
+            return;
+        }
+        const lang = typeof language === 'string' ? language.trim() : '';
+        if (!lang) {
+            resolve(0);
+            return;
+        }
+
+        const transaction = db.transaction([STORE_GLOBAL_VOCAB], 'readonly');
+        const store = transaction.objectStore(STORE_GLOBAL_VOCAB);
+        if (!store.indexNames.contains('status_language')) {
+            const req = store.getAll();
+            req.onsuccess = () => resolve((req.result || []).filter((it) => it?.status === status && it?.language === lang).length);
+            req.onerror = () => reject(req.error);
+            return;
+        }
+        const index = store.index('status_language');
+        const request = index.count([status, lang]);
         request.onsuccess = () => resolve(request.result || 0);
         request.onerror = () => reject(request.error);
     });
@@ -591,6 +780,45 @@ export async function countDueCards(now) {
         }
         const index = store.index('status_due');
         const range = IDBKeyRange.bound(['learning', ''], ['learning', nowIso]);
+        const request = index.count(range);
+        request.onsuccess = () => resolve(request.result || 0);
+        request.onerror = () => reject(request.error);
+    });
+}
+
+/**
+ * Count due global vocabulary cards for a given language (learning + language + due <= now).
+ * @param {Date} now
+ * @param {string} language
+ * @returns {Promise<number>}
+ */
+export async function countDueCardsByLanguage(now, language) {
+    return new Promise((resolve, reject) => {
+        if (!db) {
+            reject(new Error('Database not initialized'));
+            return;
+        }
+        const lang = typeof language === 'string' ? language.trim() : '';
+        if (!lang) {
+            resolve(0);
+            return;
+        }
+        const nowIso = (now instanceof Date ? now : new Date()).toISOString();
+        const transaction = db.transaction([STORE_GLOBAL_VOCAB], 'readonly');
+        const store = transaction.objectStore(STORE_GLOBAL_VOCAB);
+
+        if (!store.indexNames.contains('status_language_due')) {
+            const req = store.getAll();
+            req.onsuccess = () => {
+                const all = req.result || [];
+                resolve(all.filter((it) => it?.status === 'learning' && it?.language === lang && typeof it?.due === 'string' && it.due <= nowIso).length);
+            };
+            req.onerror = () => reject(req.error);
+            return;
+        }
+
+        const index = store.index('status_language_due');
+        const range = IDBKeyRange.bound(['learning', lang, ''], ['learning', lang, nowIso]);
         const request = index.count(range);
         request.onsuccess = () => resolve(request.result || 0);
         request.onerror = () => reject(request.error);
@@ -677,6 +905,12 @@ export async function saveBook(bookData) {
             return;
         }
 
+        const language = typeof bookData?.language === 'string' ? bookData.language.trim() : '';
+        if (!language) {
+            reject(new Error('Book language is required'));
+            return;
+        }
+
         const transaction = db.transaction([STORE_BOOKS], 'readwrite');
         const store = transaction.objectStore(STORE_BOOKS);
 
@@ -684,6 +918,7 @@ export async function saveBook(bookData) {
             id: bookData.id,
             title: bookData.title,
             cover: bookData.cover || null,
+            language,
             chapters: bookData.chapters,
             chapterCount: bookData.chapters.length,
             addedAt: bookData.addedAt || new Date().toISOString(),
@@ -727,6 +962,7 @@ export async function getAllBooks() {
                 id: book.id,
                 title: book.title,
                 cover: book.cover,
+                language: book.language,
                 chapterCount: book.chapterCount,
                 addedAt: book.addedAt,
                 lastReadAt: book.lastReadAt,

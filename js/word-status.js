@@ -14,9 +14,23 @@ export const WORD_STATUSES = /** @type {const} */ ({
   KNOWN: 'known'
 });
 
+const FALLBACK_STRIP_LEADING = /^[^a-z0-9\u00C0-\u024F\u1E00-\u1EFF]+/i;
+const FALLBACK_STRIP_TRAILING = /[^a-z0-9\u00C0-\u024F\u1E00-\u1EFF]+$/i;
+
+/** @type {{leading:RegExp,trailing:RegExp}|null} */
+let UNICODE_STRIP = null;
+try {
+  UNICODE_STRIP = {
+    leading: /^[^\p{L}\p{N}]+/u,
+    trailing: /[^\p{L}\p{N}]+$/u
+  };
+} catch {
+  UNICODE_STRIP = null;
+}
+
 /**
  * Normalize a word for consistent matching/storage.
- * Keeps letters/numbers and common in-word punctuation like apostrophes.
+ * Keeps letters/numbers across scripts; strips leading/trailing punctuation while preserving in-word apostrophes/dashes.
  * @param {string} raw
  * @returns {string}
  */
@@ -25,10 +39,9 @@ export function normalizeWord(raw) {
   const trimmed = raw.trim().toLowerCase();
   if (!trimmed) return '';
 
-  // Remove leading/trailing punctuation while preserving in-word apostrophes/dashes.
-  return trimmed
-    .replace(/^[^a-z0-9\u00C0-\u024F\u1E00-\u1EFF]+/i, '')
-    .replace(/[^a-z0-9\u00C0-\u024F\u1E00-\u1EFF]+$/i, '');
+  const leading = UNICODE_STRIP?.leading || FALLBACK_STRIP_LEADING;
+  const trailing = UNICODE_STRIP?.trailing || FALLBACK_STRIP_TRAILING;
+  return trimmed.replace(leading, '').replace(trailing, '');
 }
 
 /**

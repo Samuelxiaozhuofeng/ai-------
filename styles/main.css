@@ -881,11 +881,13 @@ body {
   visibility: hidden;
   transition: opacity 0.2s;
   backdrop-filter: blur(2px);
+  pointer-events: none;
 }
 
 .modal-overlay.open {
   opacity: 1;
   visibility: visible;
+  pointer-events: auto;
 }
 
 .modal {
@@ -939,6 +941,41 @@ body {
 
 .checkbox-row input[type="checkbox"] {
   accent-color: var(--accent-primary);
+}
+
+.radio-row {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  color: var(--text-secondary);
+  font-size: var(--font-size-sm);
+  margin-bottom: 6px;
+}
+
+.radio-row input[type="radio"] {
+  accent-color: var(--accent-primary);
+}
+
+input[type="range"] {
+  width: 100%;
+  accent-color: var(--accent-primary);
+}
+
+.slider-value {
+  font-variant-numeric: tabular-nums;
+  color: var(--text-secondary);
+  margin-left: 6px;
+}
+
+.language-select-buttons {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--spacing-sm);
+  margin-top: var(--spacing-md);
+}
+
+.language-select-btn {
+  justify-content: center;
 }
 
 .sync-status-text {
@@ -1012,6 +1049,56 @@ body {
   border-bottom: 1px solid var(--border-default);
   backdrop-filter: saturate(180%) blur(20px);
   -webkit-backdrop-filter: saturate(180%) blur(20px);
+}
+
+.language-tabs {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding-left: var(--spacing-md);
+  border-left: 1px solid var(--border-default);
+}
+
+.language-tab {
+  padding: 6px 10px;
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  border-radius: 999px;
+  border: 1px solid var(--border-default);
+  background: var(--bg-tertiary);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.language-tab:hover {
+  color: var(--text-primary);
+  background: var(--bg-elevated);
+}
+
+.language-tab.active {
+  background: var(--accent-primary);
+  border-color: var(--accent-primary);
+  color: white;
+}
+
+.language-tab:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.language-tab.is-empty {
+  opacity: 0.6;
+}
+
+.review-buttons {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+}
+
+.review-buttons .btn {
+  white-space: nowrap;
 }
 
 .bookshelf-content {
@@ -1921,6 +2008,25 @@ body {
   font-weight: 700;
   color: var(--text-primary);
   word-break: break-word;
+}
+
+.vocab-library-title {
+  display: flex;
+  align-items: baseline;
+  gap: var(--spacing-sm);
+  min-width: 0;
+}
+
+.vocab-language-badge {
+  font-size: var(--font-size-xs);
+  font-weight: 700;
+  color: var(--text-secondary);
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-default);
+  padding: 2px 8px;
+  border-radius: 999px;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .vocab-library-card-actions {

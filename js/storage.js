@@ -11,6 +11,12 @@ const STORAGE_KEYS = {
   ANKI_SETTINGS: "language-reader-anki-settings",
 };
 
+export const SUPPORTED_LANGUAGES = /** @type {const} */ ({
+  en: '英语',
+  es: '西班牙语',
+  ja: '日语'
+});
+
 // Default settings
 const DEFAULT_SETTINGS = {
   apiUrl: "",
@@ -27,6 +33,45 @@ const DEFAULT_LAYOUT = {
   readerWidth: 70, // percentage
   panelWidth: 30,  // percentage
 };
+
+export const FSRS_SETTINGS_KEY = 'language-reader-fsrs-settings';
+
+const DEFAULT_FSRS_SETTINGS = {
+  reviewMode: 'grouped', // 'grouped' | 'mixed'
+  requestRetention: 0.9
+};
+
+function normalizeFsrsSettings(raw) {
+  const reviewMode = raw?.reviewMode === 'mixed' ? 'mixed' : 'grouped';
+  let requestRetention = Number(raw?.requestRetention);
+  if (!Number.isFinite(requestRetention)) requestRetention = DEFAULT_FSRS_SETTINGS.requestRetention;
+  requestRetention = Math.max(0.7, Math.min(0.97, requestRetention));
+  requestRetention = Math.round(requestRetention * 100) / 100;
+  return { reviewMode, requestRetention };
+}
+
+export function getFsrsSettings() {
+  try {
+    const stored = localStorage.getItem(FSRS_SETTINGS_KEY);
+    if (stored) {
+      return normalizeFsrsSettings({ ...DEFAULT_FSRS_SETTINGS, ...JSON.parse(stored) });
+    }
+  } catch (e) {
+    console.error("Failed to load FSRS settings:", e);
+  }
+  return { ...DEFAULT_FSRS_SETTINGS };
+}
+
+export function saveFsrsSettings(settings) {
+  try {
+    const normalized = normalizeFsrsSettings(settings);
+    localStorage.setItem(FSRS_SETTINGS_KEY, JSON.stringify(normalized));
+    return true;
+  } catch (e) {
+    console.error("Failed to save FSRS settings:", e);
+    return false;
+  }
+}
 
 /**
  * Get AI settings from localStorage
