@@ -1,0 +1,103 @@
+/* ============================================
+   Language Reader - Apple Books Inspired Design
+   Clean, typographic-centric UI
+   ============================================ */
+
+/* CSS Variables */
+:root {
+  /* Colors - Light Mode (Default/Apple Books Paper) */
+  --bg-primary: #fbfbfd;
+  --bg-secondary: #f5f5f7;
+  /* Sidebar/Toolbar */
+  --bg-tertiary: #ffffff;
+  /* Cards */
+  --bg-elevated: #ffffff;
+  --page-bg: #ffffff;
+
+  --text-primary: #1d1d1f;
+  --text-secondary: #86868b;
+  --text-muted: #a1a1a6;
+
+  /* Accents */
+  --accent-primary: #007aff;
+  /* Apple Blue */
+  --accent-primary-hover: #0071e3;
+  --accent-secondary: #5856d6;
+  --accent-success: #34c759;
+  --accent-warning: #ff9500;
+  --accent-error: #ff3b30;
+
+  /* Borders */
+  --border-subtle: rgba(0, 0, 0, 0.05);
+  --border-default: rgba(0, 0, 0, 0.1);
+  --border-hover: rgba(0, 0, 0, 0.2);
+
+  /* Shadows */
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.04);
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.08);
+  --shadow-lg: 0 12px 24px rgba(0, 0, 0, 0.12);
+
+  /* Spacing */
+  --spacing-xs: 4px;
+  --spacing-sm: 8px;
+  --spacing-md: 16px;
+  --spacing-lg: 24px;
+  --spacing-xl: 32px;
+  --spacing-2xl: 48px;
+
+  /* Radius */
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 12px;
+  --radius-xl: 18px;
+
+  /* Typography */
+  --font-family-ui: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --font-family-reading: "Iowan Old Style", "Apple Garamond", "Baskerville", "Times New Roman", "Droid Serif", Times, "Source Serif Pro", serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol";
+
+  --font-size-xs: 11px;
+  --font-size-sm: 13px;
+  --font-size-base: 15px;
+  --font-size-lg: 17px;
+  --font-size-xl: 21px;
+  --font-size-2xl: 28px;
+  --font-size-reading: 20px;
+
+  /* Layout */
+  --header-height: 50px;
+  --sidebar-width: 280px;
+  --vocab-width: 30%;
+  /* Requested 30% */
+
+  /* Transitions */
+  --transition-fast: 0.2s cubic-bezier(0.65, 0.05, 0.36, 1);
+  --transition-normal: 0.3s cubic-bezier(0.65, 0.05, 0.36, 1);
+
+  /* Highlight */
+  --mark-bg: rgba(255, 214, 10, 0.3);
+  --mark-border: transparent;
+}
+
+/* Dark Theme */
+[data-theme="dark"] {
+  --bg-primary: #1c1c1e;
+  /* Apple Dark Gray */
+  --bg-secondary: #2c2c2e;
+  --bg-tertiary: #3a3a3c;
+  --bg-elevated: #48484a;
+  --page-bg: #1f1f22;
+
+  --text-primary: #f5f5f7;
+  --text-secondary: #98989d;
+  --text-muted: #636366;
+
+  --border-subtle: rgba(255, 255, 255, 0.08);
+  --border-default: rgba(255, 255, 255, 0.12);
+  --border-hover: rgba(255, 255, 255, 0.2);
+
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.4);
+
+  --mark-bg: rgba(255, 214, 10, 0.25);
+}
+

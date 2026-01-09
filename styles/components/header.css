@@ -1,0 +1,61 @@
+/* ============================================
+   Header
+   ============================================ */
+.app-header {
+  height: var(--header-height);
+  padding: 0 var(--spacing-md);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border-default);
+  z-index: 10;
+  backdrop-filter: saturate(180%) blur(20px);
+  -webkit-backdrop-filter: saturate(180%) blur(20px);
+}
+
+.header-left,
+.header-right {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-md);
+}
+
+.logo {
+  font-size: var(--font-size-lg);
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  color: var(--text-primary);
+}
+
+.book-title {
+  color: var(--text-secondary);
+  font-size: var(--font-size-sm);
+  padding-left: var(--spacing-md);
+  border-left: 1px solid var(--border-default);
+  max-width: 300px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sync-indicator {
+  font-size: var(--font-size-xs);
+  color: var(--text-secondary);
+  padding: 4px 8px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 999px;
+  background: var(--bg-tertiary);
+  user-select: none;
+}
+
+.sync-indicator[data-state="syncing"] {
+  color: var(--accent-primary);
+  border-color: var(--accent-primary);
+}
+
+.sync-indicator[data-state="synced"] {
+  color: var(--accent-success);
+  border-color: var(--accent-success);
+}
+
