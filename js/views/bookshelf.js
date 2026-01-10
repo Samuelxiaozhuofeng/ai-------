@@ -22,6 +22,11 @@ import { autoSyncIfNeeded } from '../sync-service.js';
 
 let viewMode = 'grid'; // 'grid' | 'list'
 let booksLibrary = []; // Books metadata list
+/** @type {Map<string, any>} */
+let booksById = new Map();
+/** @type {Array<string>} */
+let stableOrderIds = [];
+let loadSeq = 0;
 let contextMenuBookId = null;
 
 /** @type {{ openBook: (bookId: string) => void, openReview: (language?: string|null) => void, openVocabLibrary: () => void }} */
@@ -59,48 +64,289 @@ export function createBookshelfController(elements) {
     navigation = { ...navigation, ...handlers };
   }
 
-  async function loadBooks() {
-    const localBooks = await getAllBooks();
-    const user = await getSessionUser();
-
-    if (!user) {
-      booksLibrary = localBooks;
-      return booksLibrary;
+  function scheduleIdle(fn, timeoutMs = 900) {
+    if (typeof window === 'undefined') return setTimeout(fn, 0);
+    if (typeof window.requestIdleCallback === 'function') {
+      return window.requestIdleCallback(fn, { timeout: timeoutMs });
     }
+    return setTimeout(fn, Math.min(250, timeoutMs));
+  }
+
+  function normalizeRemoteRow(row) {
+    return {
+      id: row.id,
+      title: row.title || '',
+      cover: row.cover || null,
+      language: row.language || 'en',
+      chapterCount: typeof row.chapter_count === 'number' ? row.chapter_count : Number(row.chapter_count || 0),
+      addedAt: row.created_at || row.added_at || row.updated_at || null,
+      lastReadAt: row.last_read_at || row.updated_at || null,
+      currentChapter: typeof row.current_chapter === 'number' ? row.current_chapter : Number(row.current_chapter || 0),
+      storagePath: row.storage_path || null,
+      storageUpdatedAt: row.file_updated_at || row.updated_at || null,
+      updatedAt: row.updated_at || null
+    };
+  }
+
+  function getTimeKey(book) {
+    return String(book?.lastReadAt || book?.updatedAt || book?.addedAt || '');
+  }
+
+  function stableSort(nextBooks, prevIds) {
+    const prevIndex = new Map((prevIds || []).map((id, idx) => [id, idx]));
+    return (nextBooks || []).slice().sort((a, b) => {
+      const ta = getTimeKey(a);
+      const tb = getTimeKey(b);
+      if (ta !== tb) return ta > tb ? -1 : 1;
+      const ia = prevIndex.has(a.id) ? prevIndex.get(a.id) : Number.POSITIVE_INFINITY;
+      const ib = prevIndex.has(b.id) ? prevIndex.get(b.id) : Number.POSITIVE_INFINITY;
+      if (ia !== ib) return ia - ib;
+      return String(a.id).localeCompare(String(b.id));
+    });
+  }
+
+  function computeSyncTag(book) {
+    if (book.localOnly) return `<span class="badge" style="margin-left: 6px;">本地</span>`;
+    if (book.storagePath && !book.isCached) return `<span class="badge" style="margin-left: 6px;">云端</span>`;
+    return '';
+  }
+
+  function updateBookNode(el, book, mode) {
+    if (!el || !book) return;
+    const renderKey = [
+      book.title || '',
+      book.cover || '',
+      String(book.currentChapter || 0),
+      String(book.lastReadAt || ''),
+      String(book.chapterCount || 0),
+      book.localOnly ? '1' : '0',
+      book.isCached ? '1' : '0'
+    ].join('|');
+    if (el.dataset.renderKey === renderKey) return;
+    el.dataset.renderKey = renderKey;
+
+    const titleHtml = `${escapeHtml(book.title || '')}${computeSyncTag(book)}`;
+    const progressPercent = getProgressPercent(book);
+
+    if (mode === 'grid') {
+      const cover = el.querySelector('.book-cover');
+      if (cover) {
+        cover.innerHTML = `
+          ${getBookCoverHtml(book, 'grid')}
+          <button class="book-menu-btn" data-book-id="${book.id}">⋮</button>
+        `;
+      }
+      const titleEl = el.querySelector('.book-card-title');
+      if (titleEl) {
+        titleEl.innerHTML = titleHtml;
+        titleEl.title = book.title || '';
+      }
+      const metaEl = el.querySelector('.book-card-meta');
+      if (metaEl) metaEl.textContent = `${book.chapterCount || 0} 章`;
+      const fillEl = el.querySelector('.book-progress-fill');
+      if (fillEl) fillEl.style.width = `${progressPercent}%`;
+      return;
+    }
+
+    const cover = el.querySelector('.book-list-cover');
+    if (cover) cover.innerHTML = getBookCoverHtml(book, 'list');
+    const titleEl = el.querySelector('.book-list-title');
+    if (titleEl) {
+      titleEl.innerHTML = titleHtml;
+      titleEl.title = book.title || '';
+    }
+    const metaEl = el.querySelector('.book-list-meta');
+    if (metaEl) {
+      metaEl.innerHTML = `
+        <span>${book.chapterCount || 0} 章</span>
+        <span>•</span>
+        <span>阅读进度: ${Math.round(progressPercent)}%</span>
+        <div class="book-list-progress">
+          <div class="book-list-progress-fill" style="width: ${progressPercent}%"></div>
+        </div>
+      `;
+    } else {
+      const fillEl = el.querySelector('.book-list-progress-fill');
+      if (fillEl) fillEl.style.width = `${progressPercent}%`;
+    }
+    const menuBtn = el.querySelector('.book-list-menu-btn');
+    if (menuBtn) menuBtn.dataset.bookId = book.id;
+  }
+
+  function ensureBooksWrapper(mode) {
+    const container = getBooksRenderRoot();
+    if (!container) return null;
+
+    const wrapperClass = mode === 'grid' ? 'books-grid' : 'books-list';
+    const existing = container.firstElementChild;
+    if (existing && (existing.classList.contains('books-grid') || existing.classList.contains('books-list')) && existing.classList.contains(wrapperClass)) {
+      return existing;
+    }
+
+    container.innerHTML = '';
+    const wrapper = document.createElement('div');
+    wrapper.className = wrapperClass;
+    container.appendChild(wrapper);
+    return wrapper;
+  }
+
+  function createBookNode(book, mode, index) {
+    const html = renderBookItemHtml(book, mode, index);
+    const tmp = document.createElement('div');
+    tmp.innerHTML = html.trim();
+    const el = tmp.firstElementChild;
+    if (el) {
+      const renderKey = [
+        book.title || '',
+        book.cover || '',
+        String(book.currentChapter || 0),
+        String(book.lastReadAt || ''),
+        String(book.chapterCount || 0),
+        book.localOnly ? '1' : '0',
+        book.isCached ? '1' : '0'
+      ].join('|');
+      el.dataset.renderKey = renderKey;
+    }
+    return el;
+  }
+
+  function renderPatch(books, mode) {
+    const wrapper = ensureBooksWrapper(mode);
+    if (!wrapper) return;
+
+    const ids = (books || []).map((b) => b.id).filter(Boolean);
+    const idSet = new Set(ids);
+
+    /** @type {Map<string, Element>} */
+    const existingById = new Map();
+    wrapper.querySelectorAll('[data-book-id]').forEach((el) => {
+      const id = el.dataset.bookId;
+      if (id) existingById.set(id, el);
+      if (id && !idSet.has(id)) {
+        el.remove();
+        existingById.delete(id);
+      }
+    });
+
+    ids.forEach((id, index) => {
+      const book = booksById.get(id);
+      if (!book) return;
+      let el = existingById.get(id) || null;
+      if (!el) {
+        el = createBookNode(book, mode, index);
+        if (el) {
+          wrapper.appendChild(el);
+          existingById.set(id, el);
+        }
+      } else {
+        updateBookNode(el, book, mode);
+      }
+    });
+
+    ids.forEach((id) => {
+      const el = existingById.get(id) || null;
+      if (el) wrapper.appendChild(el);
+    });
+  }
+
+  function applyBooksSnapshot(books, { remoteIds = null, localIdSet = null } = {}) {
+    /** @type {Set<string>} */
+    const changedIds = new Set();
+
+    for (const incoming of books || []) {
+      if (!incoming?.id) continue;
+      const id = incoming.id;
+      const prev = booksById.get(id) || null;
+      const next = prev ? { ...prev, ...incoming } : { ...incoming };
+
+      const prevLastReadAt = prev?.lastReadAt || '';
+      const nextLastReadAt = incoming?.lastReadAt || '';
+      if (prev && prevLastReadAt && nextLastReadAt && String(prevLastReadAt) > String(nextLastReadAt)) {
+        next.lastReadAt = prev.lastReadAt;
+        next.currentChapter = prev.currentChapter;
+      }
+
+      if (localIdSet) next.isCached = localIdSet.has(id);
+
+      const prevKey = prev ? JSON.stringify({ t: prev.title, c: prev.cover, ch: prev.currentChapter, lr: prev.lastReadAt, cc: prev.chapterCount, lo: prev.localOnly, ic: prev.isCached }) : '';
+      const nextKey = JSON.stringify({ t: next.title, c: next.cover, ch: next.currentChapter, lr: next.lastReadAt, cc: next.chapterCount, lo: next.localOnly, ic: next.isCached });
+      if (!prev || prevKey !== nextKey) changedIds.add(id);
+      booksById.set(id, next);
+    }
+
+    if (remoteIds) {
+      const remoteSet = new Set(remoteIds);
+      for (const [id, book] of booksById.entries()) {
+        if (book?.isCached && !remoteSet.has(id)) {
+          if (!book.localOnly) {
+            booksById.set(id, { ...book, localOnly: true });
+            changedIds.add(id);
+          }
+        } else if (book?.localOnly && remoteSet.has(id)) {
+          booksById.set(id, { ...book, localOnly: false });
+          changedIds.add(id);
+        }
+      }
+    }
+
+    const nextAll = stableSort(Array.from(booksById.values()), stableOrderIds);
+    stableOrderIds = nextAll.map((b) => b.id);
+    booksLibrary = nextAll;
+    return changedIds;
+  }
+
+  async function loadBooks() {
+    booksById = new Map();
+    stableOrderIds = [];
+    booksLibrary = [];
+
+    const localBooks = await getAllBooks();
+    const normalized = (localBooks || []).map((b) => ({ ...b, isCached: true }));
+    applyBooksSnapshot(normalized);
+
+    const seq = ++loadSeq;
+    scheduleIdle(() => {
+      void revalidateRemoteBooks(seq);
+    });
+
+    return booksLibrary;
+  }
+
+  async function revalidateRemoteBooks(seq) {
+    const user = await getSessionUser();
+    if (!user) return;
+    if (seq !== loadSeq) return;
+
+    const localBooks = await getAllBooks().catch(() => []);
+    const localIdSet = new Set((localBooks || []).map((b) => b.id));
 
     try {
       const remoteRows = await listUserEPUBs();
-      const remoteBooks = (remoteRows || []).map((row) => ({
-        id: row.id,
-        title: row.title || '',
-        cover: row.cover || null,
-        language: row.language || 'en',
-        chapterCount: typeof row.chapter_count === 'number' ? row.chapter_count : Number(row.chapter_count || 0),
-        addedAt: row.created_at || row.added_at || row.updated_at || null,
-        lastReadAt: row.last_read_at || row.updated_at || null,
-        currentChapter: typeof row.current_chapter === 'number' ? row.current_chapter : Number(row.current_chapter || 0),
-        storagePath: row.storage_path || null,
-        storageUpdatedAt: row.file_updated_at || row.updated_at || null
-      }));
+      if (seq !== loadSeq) return;
 
-      const localById = new Map(localBooks.map((b) => [b.id, b]));
-      const remoteIds = new Set(remoteBooks.map((b) => b.id));
+      const remoteBooks = (remoteRows || []).map(normalizeRemoteRow);
+      const remoteIds = remoteBooks.map((b) => b.id);
 
-      const mergedRemote = remoteBooks.map((book) => ({
-        ...book,
-        isCached: localById.has(book.id)
-      }));
+      const mergedRemote = remoteBooks.map((b) => {
+        const existing = booksById.get(b.id) || null;
+        const merged = existing ? { ...existing, ...b } : { ...b };
+        merged.isCached = localIdSet.has(b.id);
 
-      const localOnly = localBooks
-        .filter((b) => !remoteIds.has(b.id))
-        .map((b) => ({ ...b, localOnly: true, isCached: true }));
+        const localLastReadAt = existing?.lastReadAt || '';
+        const remoteLastReadAt = b?.lastReadAt || '';
+        if (existing && localLastReadAt && remoteLastReadAt && String(localLastReadAt) > String(remoteLastReadAt)) {
+          merged.lastReadAt = existing.lastReadAt;
+          merged.currentChapter = existing.currentChapter;
+        }
+        merged.localOnly = false;
+        return merged;
+      });
 
-      booksLibrary = [...mergedRemote, ...localOnly];
+      applyBooksSnapshot(mergedRemote, { remoteIds, localIdSet });
+      renderBookshelf({ isPatchOnly: true });
     } catch (error) {
-      console.warn('Failed to load remote books, falling back to local:', error);
-      booksLibrary = localBooks;
+      console.warn('Failed to revalidate remote books:', error);
     }
-    return booksLibrary;
   }
 
   function getBooks() {
@@ -220,20 +466,16 @@ export function createBookshelfController(elements) {
   }
 
   function renderBooksTemplate(books, mode) {
-    const container = getBooksRenderRoot();
-    if (!container) return;
-
-    const wrapperClass = mode === 'grid' ? 'books-grid' : 'books-list';
-    container.innerHTML = `
-        <div class="${wrapperClass}">
-            ${(books || []).map((book, index) => renderBookItemHtml(book, mode, index)).join('')}
-        </div>
-    `;
+    renderPatch(books, mode);
   }
 
-  function renderBookshelf() {
+  function renderBookshelf({ isPatchOnly = false } = {}) {
     renderLanguageTabs();
-    void refreshBookshelfReviewButtons();
+    if (isPatchOnly) {
+      scheduleIdle(() => void refreshBookshelfReviewButtons(), 1200);
+    } else {
+      void refreshBookshelfReviewButtons();
+    }
 
     const currentLanguageFilter = getLanguageFilter();
     const hasAnyBooks = booksLibrary.length > 0;
@@ -251,12 +493,25 @@ export function createBookshelfController(elements) {
 
     elements.emptyBookshelf.style.display = 'none';
     renderBooksTemplate(filteredBooks, viewMode);
+
+    if (!isPatchOnly) {
+      scheduleIdle(() => {
+        void autoSyncIfNeeded({ reason: 'bookshelf' })
+          .then(async () => {
+            const nextLocal = await getAllBooks().catch(() => []);
+            applyBooksSnapshot((nextLocal || []).map((b) => ({ ...b, isCached: true })));
+            renderBookshelf({ isPatchOnly: true });
+          })
+          .catch((error) => {
+            console.warn('Background sync failed:', error);
+          });
+      });
+    }
   }
 
   async function refreshBookshelf() {
     await loadBooks();
     renderBookshelf();
-    void autoSyncIfNeeded({ reason: 'bookshelf' });
   }
 
   async function refreshBookshelfReviewButtons() {
