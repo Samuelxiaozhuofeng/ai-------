@@ -3,7 +3,7 @@
  * Coordinates all modules and handles UI interactions
  */
 
-import { getSyncStatus, setSyncStatusListener, startBackgroundSync, stopBackgroundSync, syncNow } from './sync-service.js';
+import { autoSyncIfNeeded, getSyncStatus, setSyncStatusListener, startBackgroundSync, stopBackgroundSync, syncNow } from './sync-service.js';
 import { initDB } from './db.js';
 import { elements } from './ui/dom-refs.js';
 import { showNotification } from './ui/notifications.js';
@@ -73,6 +73,7 @@ async function init() {
       onUserChanged: () => {
         void bookshelfController.refreshBookshelf();
         void bookshelfController.refreshBookshelfReviewButtons();
+        void autoSyncIfNeeded({ reason: 'auth' });
       }
     });
 

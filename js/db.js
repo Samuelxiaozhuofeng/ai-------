@@ -606,8 +606,8 @@ export async function upsertGlobalVocabItem(item) {
             if (!skipRemote) {
                 queueMicrotask(() => {
                     import('./supabase/global-vocab-repo.js')
-                        .then((mod) => mod.upsertGlobalVocabRemote(record))
-                        .catch(() => {});
+                        .then((mod) => mod.queueGlobalVocabUpsert(record))
+                        .catch((error) => console.warn('Global vocab remote sync enqueue failed:', error));
                 });
             }
             resolve(record);
@@ -639,8 +639,8 @@ export async function deleteGlobalVocabItem(idOrWord, language = null) {
         request.onsuccess = () => {
             queueMicrotask(() => {
                 import('./supabase/global-vocab-repo.js')
-                    .then((mod) => mod.deleteGlobalVocabRemote(key))
-                    .catch(() => {});
+                    .then((mod) => mod.queueGlobalVocabDelete(key, new Date().toISOString()))
+                    .catch((error) => console.warn('Global vocab remote delete enqueue failed:', error));
             });
             resolve(true);
         };

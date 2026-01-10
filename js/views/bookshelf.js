@@ -18,6 +18,7 @@ import { getLanguageFilter, setLanguageFilter } from '../core/language-filter.js
 import { getSessionUser } from '../supabase/session.js';
 import { listUserEPUBs, uploadEPUB } from '../supabase/epub-service.js';
 import { updateRemoteBook } from '../supabase/books-service.js';
+import { autoSyncIfNeeded } from '../sync-service.js';
 
 let viewMode = 'grid'; // 'grid' | 'list'
 let booksLibrary = []; // Books metadata list
@@ -255,6 +256,7 @@ export function createBookshelfController(elements) {
   async function refreshBookshelf() {
     await loadBooks();
     renderBookshelf();
+    void autoSyncIfNeeded({ reason: 'bookshelf' });
   }
 
   async function refreshBookshelfReviewButtons() {

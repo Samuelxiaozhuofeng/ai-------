@@ -27,24 +27,30 @@ export function createSettingsModalController(elements) {
     hooks = { ...hooks, ...nextHooks };
   }
 
-  function updateSyncUI(syncStatus) {
-    const state = syncStatus?.state || 'offline';
-    const lastSyncAt = syncStatus?.lastSyncAt || null;
-    const error = syncStatus?.error || null;
+	  function updateSyncUI(syncStatus) {
+	    const state = syncStatus?.state || 'offline';
+	    const lastSyncAt = syncStatus?.lastSyncAt || null;
+	    const error = syncStatus?.error || null;
 
     let label = 'Offline';
-    if (state === 'syncing') label = 'Syncing…';
-    if (state === 'synced') label = lastSyncAt ? 'Synced' : 'Synced';
+	    if (state === 'syncing') label = 'Syncing…';
+	    if (state === 'synced') label = lastSyncAt ? 'Synced' : 'Synced';
 
-    if (elements.syncIndicator) {
-      elements.syncIndicator.textContent = label;
-      elements.syncIndicator.dataset.state = state;
-      elements.syncIndicator.title = error ? `Sync error: ${error}` : `Sync status: ${label}`;
-    }
-    if (elements.syncStatusText) {
-      elements.syncStatusText.textContent = error ? `Offline (${error})` : label;
-    }
-  }
+	    const indicators = [elements.syncIndicator, elements.syncIndicatorShelf].filter(Boolean);
+	    indicators.forEach((el) => {
+	      el.dataset.state = state;
+	      el.title = error ? `Sync error: ${error}` : `Sync status: ${label}`;
+	      const labelEl = el.querySelector?.('.sync-label') || el.querySelector?.('.mobile-hide');
+	      if (labelEl) {
+	        labelEl.textContent = label;
+	      } else {
+	        el.textContent = label;
+	      }
+	    });
+	    if (elements.syncStatusText) {
+	      elements.syncStatusText.textContent = error ? `Offline (${error})` : label;
+	    }
+	  }
 
   function loadSettingsToForm(getSyncStatus) {
     const settings = getSettings();
@@ -332,4 +338,3 @@ export function createSettingsModalController(elements) {
     handleEscape
   };
 }
-

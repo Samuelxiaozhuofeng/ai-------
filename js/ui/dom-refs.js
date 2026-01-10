@@ -71,6 +71,7 @@ export const elements = {
   themeToggleBtn: document.getElementById('themeToggleBtn'),
   themeIcon: document.getElementById('themeIcon'),
   syncIndicator: document.getElementById('syncIndicator'),
+  syncIndicatorShelf: document.getElementById('syncIndicatorShelf'),
 
   // Main content
   mainContent: document.querySelector('.main-content'),

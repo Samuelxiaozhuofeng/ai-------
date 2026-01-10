@@ -7,7 +7,7 @@ export function isOnline() {
   return navigator.onLine !== false;
 }
 
-export async function getCloudContext({ requireSyncEnabled = true } = {}) {
+export async function getCloudContext({ requireSyncEnabled = false } = {}) {
   const settings = getSettings();
   if (requireSyncEnabled && !settings?.syncEnabled) return null;
   if (!isSupabaseConfigured()) return null;
@@ -17,4 +17,3 @@ export async function getCloudContext({ requireSyncEnabled = true } = {}) {
   if (!user) return null;
   return { supabase, user, settings };
 }
-

@@ -17,14 +17,61 @@ import {
   upsertVocabularyItem
 } from './db.js';
 import { getCloudContext, isOnline } from './supabase/cloud-context.js';
-import { mapLocalGlobalVocabToRow, pullGlobalVocabUpdates } from './supabase/global-vocab-repo.js';
-import { pullBookVocabularyUpdates } from './supabase/vocabulary-repo.js';
+import { flushGlobalVocabPendingNow, mapLocalGlobalVocabToRow, pullGlobalVocabUpdates } from './supabase/global-vocab-repo.js';
+import { flushBookVocabularyPendingNow, pullBookVocabularyUpdates } from './supabase/vocabulary-repo.js';
+import { flushProgressPendingNow } from './supabase/progress-repo.js';
+import { showNotification } from './ui/notifications.js';
 
 let timerId = null;
 let realtimeChannel = null;
 let currentBookIdForSync = null;
 let status = { state: 'offline', lastSyncAt: null, error: null };
 let onStatusChange = null;
+let lastToastKey = '';
+let lastToastAt = 0;
+let syncInFlight = null;
+let lastAutoSyncAt = 0;
+let hasOnlineListener = false;
+
+function maybeToast(message, type) {
+  if (typeof document === 'undefined') return;
+  const now = Date.now();
+  const key = `${type}:${message}`;
+  if (key === lastToastKey && now - lastToastAt < 10_000) return;
+  lastToastKey = key;
+  lastToastAt = now;
+  showNotification(message, type);
+}
+
+function ensureOnlineListener() {
+  if (hasOnlineListener) return;
+  if (typeof window === 'undefined') return;
+  hasOnlineListener = true;
+  window.addEventListener(
+    'online',
+    () => {
+      void autoSyncIfNeeded({ reason: 'online' });
+    },
+    { passive: true }
+  );
+}
+
+export async function autoSyncIfNeeded({ reason = 'auto' } = {}) {
+  const ctx = await getCloudContext();
+  if (!ctx) return;
+  const books = await getAllBooks().catch(() => []);
+  if (!books || books.length === 0) return;
+
+  const now = Date.now();
+  if (now - lastAutoSyncAt < 15_000) return;
+  lastAutoSyncAt = now;
+
+  try {
+    await syncNow(null);
+  } catch (error) {
+    console.warn(`Auto sync failed (${reason}):`, error);
+  }
+}
 
 function setStatus(next) {
   status = { ...status, ...next };
@@ -253,51 +300,64 @@ async function stopRealtimeSubscription() {
 }
 
 export async function syncNow(bookId) {
-  const settings = getSettings();
-  if (!settings.syncEnabled) {
-    setStatus({ state: 'offline', error: null });
-    return;
-  }
+  if (syncInFlight) return syncInFlight;
+  syncInFlight = (async () => {
+    const settings = getSettings();
 
-  const ctx = await getCloudContext();
-  if (!ctx) {
-    setStatus({ state: 'offline', error: '请登录以启用同步' });
-    return;
-  }
-
-  if (!isOnline()) {
-    setStatus({ state: 'offline', error: '离线：等待网络恢复' });
-    return;
-  }
-
-  try {
-    setStatus({ state: 'syncing', error: null });
-
-    const since = getLastSyncAt(ctx.user.id);
-    const nowIso = new Date().toISOString();
-
-    await syncGlobalVocabulary({ ctx, since });
-
-    if (bookId) {
-      await syncBookVocabulary({ ctx, bookId, since });
-      await syncProgress({ ctx, bookId });
-      await syncBookMetadata({ ctx, bookId });
-    } else {
-      const books = await getAllBooks().catch(() => []);
-      for (const book of books) {
-        if (!book?.id) continue;
-        await syncBookVocabulary({ ctx, bookId: book.id, since });
-        await syncProgress({ ctx, bookId: book.id });
-        await syncBookMetadata({ ctx, bookId: book.id });
-      }
+    const ctx = await getCloudContext();
+    if (!ctx) {
+      setStatus({ state: 'offline', error: '请登录以启用同步' });
+      return;
     }
 
-    setLastSyncAt(ctx.user.id, nowIso);
-    await ensureRealtimeSubscription();
+    if (!isOnline()) {
+      ensureOnlineListener();
+      setStatus({ state: 'offline', error: '离线：等待网络恢复' });
+      return;
+    }
 
-    setStatus({ state: 'synced', lastSyncAt: nowIso, error: null });
-  } catch (error) {
-    setStatus({ state: 'offline', error: error?.message || String(error) });
+    try {
+      setStatus({ state: 'syncing', error: null });
+
+      await flushGlobalVocabPendingNow();
+      await flushBookVocabularyPendingNow();
+      await flushProgressPendingNow();
+
+      const since = getLastSyncAt(ctx.user.id);
+      const nowIso = new Date().toISOString();
+
+      await syncGlobalVocabulary({ ctx, since });
+
+      if (bookId) {
+        await syncBookVocabulary({ ctx, bookId, since });
+        await syncProgress({ ctx, bookId });
+        await syncBookMetadata({ ctx, bookId });
+      } else {
+        const books = await getAllBooks().catch(() => []);
+        for (const book of books) {
+          if (!book?.id) continue;
+          await syncBookVocabulary({ ctx, bookId: book.id, since });
+          await syncProgress({ ctx, bookId: book.id });
+          await syncBookMetadata({ ctx, bookId: book.id });
+        }
+      }
+
+      setLastSyncAt(ctx.user.id, nowIso);
+      await ensureRealtimeSubscription();
+
+      setStatus({ state: 'synced', lastSyncAt: nowIso, error: null });
+      if (settings?.syncEnabled) {
+        // Background sync enabled: stay quiet on success by default.
+      }
+    } catch (error) {
+      setStatus({ state: 'offline', error: error?.message || String(error) });
+      maybeToast(`同步失败：${error?.message || String(error)}`, 'error');
+    }
+  })();
+  try {
+    return await syncInFlight;
+  } finally {
+    syncInFlight = null;
   }
 }
 

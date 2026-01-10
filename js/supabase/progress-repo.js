@@ -24,35 +24,87 @@ function mapRowToLocal(row) {
 
 let pendingByBook = new Map();
 let flushTimer = null;
+let flushInFlight = false;
+let retryDelayMs = 1500;
+const maxRetryDelayMs = 30_000;
+let hasOnlineListener = false;
+
+function ensureOnlineListener() {
+  if (hasOnlineListener) return;
+  if (typeof window === 'undefined') return;
+  hasOnlineListener = true;
+  window.addEventListener(
+    'online',
+    () => {
+      scheduleFlush(0);
+    },
+    { passive: true }
+  );
+}
 
 async function flushPending() {
   flushTimer = null;
-  const ctx = await getCloudContext();
-  if (!ctx || !isOnline()) {
-    pendingByBook.clear();
-    return;
+  if (flushInFlight) return;
+  flushInFlight = true;
+  try {
+    const ctx = await getCloudContext();
+    if (!ctx) return;
+
+    const entries = Array.from(pendingByBook.entries());
+    if (entries.length === 0) {
+      retryDelayMs = 1500;
+      return;
+    }
+
+    if (!isOnline()) {
+      ensureOnlineListener();
+      scheduleFlush(retryDelayMs);
+      retryDelayMs = Math.min(retryDelayMs * 2, maxRetryDelayMs);
+      return;
+    }
+
+    const rows = entries.map(([bookId, progress]) => mapLocalToRow(ctx.user.id, bookId, progress));
+    const { error } = await ctx.supabase.from('progress').upsert(rows, { onConflict: 'user_id,book_id' });
+    if (error) {
+      console.warn('Supabase progress upsert failed:', error);
+      scheduleFlush(retryDelayMs);
+      retryDelayMs = Math.min(retryDelayMs * 2, maxRetryDelayMs);
+      return;
+    }
+
+    for (const [bookId, sentProgress] of entries) {
+      const current = pendingByBook.get(bookId);
+      if (!current) continue;
+      const currentUpdatedAt = current?.updatedAt || '';
+      const sentUpdatedAt = sentProgress?.updatedAt || '';
+      if (String(currentUpdatedAt) <= String(sentUpdatedAt)) {
+        pendingByBook.delete(bookId);
+      }
+    }
+
+    retryDelayMs = 1500;
+    if (pendingByBook.size > 0) scheduleFlush(250);
+  } finally {
+    flushInFlight = false;
   }
-
-  const rows = Array.from(pendingByBook.entries()).map(([bookId, progress]) => mapLocalToRow(ctx.user.id, bookId, progress));
-  pendingByBook.clear();
-  if (rows.length === 0) return;
-
-  const { error } = await ctx.supabase.from('progress').upsert(rows, { onConflict: 'user_id,book_id' });
-  if (error) console.warn('Supabase progress upsert failed:', error);
 }
 
-function scheduleFlush() {
+function scheduleFlush(delayMs = 1200) {
   if (flushTimer) return;
   flushTimer = setTimeout(() => {
     void flushPending();
-  }, 1200);
+  }, Math.max(0, delayMs));
+}
+
+export async function flushProgressPendingNow() {
+  await flushPending();
 }
 
 export async function updatePageProgressCloud(bookId, progress) {
   const ok = await updatePageProgress(bookId, progress);
 
   const ctx = await getCloudContext();
-  if (ctx && isOnline()) {
+  if (ctx) {
     const merged = await getReadingProgress(bookId).catch(() => null);
     if (merged) {
       pendingByBook.set(bookId, merged);
@@ -110,4 +162,3 @@ export async function pullProgressUpdates({ bookId, since = null } = {}) {
   if (error) throw error;
   return (data || []).map(mapRowToLocal);
 }
-
