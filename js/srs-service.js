@@ -173,9 +173,27 @@ export async function ensureFsrsCardFields(item) {
     const mod = await loadTsFsrs();
     const createEmpty = typeof mod?.createEmptyCard === 'function' ? mod.createEmptyCard : null;
     const emptyCard = createEmpty ? createEmpty(now) : createFallbackEmptyCard(now);
-    return { ...item, ...fsrsCardToFields(emptyCard) };
+    const fields = fsrsCardToFields(emptyCard);
+    
+    if (hasDue) {
+      const existingDue = new Date(item.due);
+      if (!Number.isNaN(existingDue.getTime()) && existingDue.getTime() <= now.getTime()) {
+        fields.due = item.due;
+      }
+    }
+    
+    return { ...item, ...fields };
   } catch {
-    return { ...item, ...fsrsCardToFields(createFallbackEmptyCard(now)) };
+    const fields = fsrsCardToFields(createFallbackEmptyCard(now));
+    
+    if (hasDue) {
+      const existingDue = new Date(item.due);
+      if (!Number.isNaN(existingDue.getTime()) && existingDue.getTime() <= now.getTime()) {
+        fields.due = item.due;
+      }
+    }
+    
+    return { ...item, ...fields };
   }
 }
 
