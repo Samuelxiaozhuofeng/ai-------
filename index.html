@@ -42,11 +42,14 @@
           <button class="btn btn-secondary" id="reviewBtn" title="开始复习">
             <span class="icon">🗓️</span> 复习
           </button>
+          <button class="btn btn-secondary" id="authBtn" title="登录 / 注册">
+            🔐 登录
+          </button>
           <button class="btn btn-ghost" id="themeToggleBtnShelf" title="Toggle theme">
             <span class="icon" id="themeIconShelf">🌙</span>
           </button>
           <button class="btn btn-primary" id="importBookBtn">
-            <span class="icon">📁</span> 导入书籍
+            <span class="icon">📁</span> 上传 EPUB
           </button>
         </div>
       </header>
@@ -59,7 +62,7 @@
             <h2>书架空空如也</h2>
             <p>导入 EPUB 书籍开始您的阅读之旅</p>
             <button class="btn btn-primary btn-large" id="importBtnEmpty">
-              <span class="icon">📁</span> 导入书籍
+              <span class="icon">📁</span> 上传 EPUB
             </button>
           </div>
         </div>
@@ -649,12 +652,47 @@
       </div>
     </div>
 
+    <!-- Auth Modal -->
+    <div class="modal-overlay" id="authModal">
+      <div class="modal modal-small">
+        <div class="modal-header">
+          <h2 id="authModalTitle">🔐 登录</h2>
+          <button class="btn btn-ghost btn-small" id="closeAuthBtn">✕</button>
+        </div>
+        <div class="modal-body">
+          <p class="settings-hint" id="authConfigHint" style="display: none;">
+            Supabase 未配置。请创建 `env.js`（参考 `env.example.js`）并填写 URL 和 Anon Key。
+          </p>
+          <div class="form-group">
+            <label for="authEmail">邮箱</label>
+            <input type="email" id="authEmail" class="input" autocomplete="email" placeholder="you@example.com" />
+          </div>
+          <div class="form-group">
+            <label for="authPassword">密码</label>
+            <input type="password" id="authPassword" class="input" autocomplete="current-password" placeholder="••••••••" />
+          </div>
+          <p class="text-error" id="authError" style="display: none;"></p>
+          <div id="authSwitchRow" style="margin-top: 10px; color: var(--text-secondary); font-size: var(--font-size-sm);">
+            <span id="authSwitchHint">没有账号？</span>
+            <button class="btn btn-ghost btn-small" id="authSwitchBtn" type="button">去注册</button>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-ghost" id="cancelAuthBtn">取消</button>
+          <button class="btn btn-danger" id="signOutBtn" style="display: none;">登出</button>
+          <button class="btn btn-primary" id="submitAuthBtn">登录</button>
+        </div>
+      </div>
+    </div>
+
     <!-- File Input (hidden) -->
     <input type="file" id="fileInput" accept=".epub" hidden />
   </div>
 
   <!-- Scripts -->
+  <script src="env.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/dompurify@3.0.8/dist/purify.min.js"></script>
   <script type="module" src="js/app.js"></script>
 </body>
 

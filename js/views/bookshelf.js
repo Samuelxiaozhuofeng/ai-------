@@ -15,6 +15,9 @@ import { hideLoading, showLoading } from '../ui/loading.js';
 import { escapeHtml } from '../utils/html.js';
 import { ModalManager, createAsyncChoiceModal } from '../ui/modal-manager.js';
 import { getLanguageFilter, setLanguageFilter } from '../core/language-filter.js';
+import { getSessionUser } from '../supabase/session.js';
+import { listUserEPUBs, uploadEPUB } from '../supabase/epub-service.js';
+import { updateRemoteBook } from '../supabase/books-service.js';
 
 let viewMode = 'grid'; // 'grid' | 'list'
 let booksLibrary = []; // Books metadata list
@@ -56,7 +59,46 @@ export function createBookshelfController(elements) {
   }
 
   async function loadBooks() {
-    booksLibrary = await getAllBooks();
+    const localBooks = await getAllBooks();
+    const user = await getSessionUser();
+
+    if (!user) {
+      booksLibrary = localBooks;
+      return booksLibrary;
+    }
+
+    try {
+      const remoteRows = await listUserEPUBs();
+      const remoteBooks = (remoteRows || []).map((row) => ({
+        id: row.id,
+        title: row.title || '',
+        cover: row.cover || null,
+        language: row.language || 'en',
+        chapterCount: typeof row.chapter_count === 'number' ? row.chapter_count : Number(row.chapter_count || 0),
+        addedAt: row.created_at || row.added_at || row.updated_at || null,
+        lastReadAt: row.last_read_at || row.updated_at || null,
+        currentChapter: typeof row.current_chapter === 'number' ? row.current_chapter : Number(row.current_chapter || 0),
+        storagePath: row.storage_path || null,
+        storageUpdatedAt: row.file_updated_at || row.updated_at || null
+      }));
+
+      const localById = new Map(localBooks.map((b) => [b.id, b]));
+      const remoteIds = new Set(remoteBooks.map((b) => b.id));
+
+      const mergedRemote = remoteBooks.map((book) => ({
+        ...book,
+        isCached: localById.has(book.id)
+      }));
+
+      const localOnly = localBooks
+        .filter((b) => !remoteIds.has(b.id))
+        .map((b) => ({ ...b, localOnly: true, isCached: true }));
+
+      booksLibrary = [...mergedRemote, ...localOnly];
+    } catch (error) {
+      console.warn('Failed to load remote books, falling back to local:', error);
+      booksLibrary = localBooks;
+    }
     return booksLibrary;
   }
 
@@ -131,6 +173,11 @@ export function createBookshelfController(elements) {
 
   function renderBookItemHtml(book, mode, index) {
     if (!book) return '';
+    const syncTag = book.localOnly
+      ? `<span class="badge" style="margin-left: 6px;">本地</span>`
+      : book.storagePath && !book.isCached
+        ? `<span class="badge" style="margin-left: 6px;">云端</span>`
+        : '';
     if (mode === 'grid') {
       return `
           <div class="book-card" data-book-id="${book.id}" style="animation-delay: ${index * 0.05}s">
@@ -139,7 +186,7 @@ export function createBookshelfController(elements) {
                   <button class="book-menu-btn" data-book-id="${book.id}">⋮</button>
               </div>
               <div class="book-card-info">
-                  <div class="book-card-title" title="${escapeHtml(book.title)}">${escapeHtml(book.title)}</div>
+                  <div class="book-card-title" title="${escapeHtml(book.title)}">${escapeHtml(book.title)}${syncTag}</div>
                   <div class="book-card-meta">${book.chapterCount} 章</div>
                   <div class="book-progress-bar">
                       <div class="book-progress-fill" style="width: ${getProgressPercent(book)}%"></div>
@@ -156,7 +203,7 @@ export function createBookshelfController(elements) {
               ${getBookCoverHtml(book, 'list')}
           </div>
           <div class="book-list-info">
-              <div class="book-list-title" title="${escapeHtml(book.title)}">${escapeHtml(book.title)}</div>
+              <div class="book-list-title" title="${escapeHtml(book.title)}">${escapeHtml(book.title)}${syncTag}</div>
               <div class="book-list-meta">
                   <span>${book.chapterCount} 章</span>
                   <span>•</span>
@@ -353,6 +400,11 @@ export function createBookshelfController(elements) {
     }
 
     try {
+      const book = booksLibrary.find((b) => b.id === contextMenuBookId) || null;
+      const user = await getSessionUser();
+      if (user && book?.storagePath) {
+        await updateRemoteBook(contextMenuBookId, { title: newTitle });
+      }
       await renameBookInDB(contextMenuBookId, newTitle);
       showNotification('重命名成功', 'success');
       closeRenameModal();
@@ -378,11 +430,22 @@ export function createBookshelfController(elements) {
 
   async function handleDeleteBook() {
     try {
+      const book = booksLibrary.find((b) => b.id === contextMenuBookId) || null;
+      const user = await getSessionUser();
+      let didShowLoading = false;
+      if (user && book?.storagePath) {
+        showLoading('正在删除云端书籍...');
+        didShowLoading = true;
+        const { deleteEPUB } = await import('../supabase/epub-service.js');
+        await deleteEPUB(book.storagePath);
+      }
       await deleteBookFromDB(contextMenuBookId);
+      if (didShowLoading) hideLoading();
       showNotification('删除成功', 'success');
       closeDeleteModal();
       await refreshBookshelf();
     } catch (error) {
+      hideLoading();
       showNotification('删除失败: ' + error.message, 'error');
     }
   }
@@ -435,6 +498,36 @@ export function createBookshelfController(elements) {
         lastReadAt: new Date().toISOString(),
         language: selectedLanguage
       });
+
+      const user = await getSessionUser();
+      if (user) {
+        try {
+          showLoading('正在上传到云端...');
+          const remote = await uploadEPUB(file, {
+            bookId,
+            title: parsedBook.title,
+            cover: parsedBook.cover,
+            language: selectedLanguage,
+            chapterCount: parsedBook.chapters.length
+          });
+          await saveBook({
+            id: bookId,
+            title: parsedBook.title,
+            cover: parsedBook.cover,
+            chapters: parsedBook.chapters,
+            chapterCount: parsedBook.chapters.length,
+            currentChapter: 0,
+            addedAt: new Date().toISOString(),
+            lastReadAt: new Date().toISOString(),
+            language: selectedLanguage,
+            storagePath: remote?.storage_path || null,
+            storageUpdatedAt: remote?.file_updated_at || remote?.updated_at || new Date().toISOString()
+          });
+        } catch (error) {
+          console.warn('Failed to upload EPUB to Supabase:', error);
+          showNotification('云端上传失败（已保留本地副本）: ' + (error?.message || String(error)), 'error');
+        }
+      }
 
       hideLoading();
       showNotification('书籍导入成功', 'success');
@@ -515,4 +608,3 @@ export function createBookshelfController(elements) {
     handleEscape
   };
 }
-

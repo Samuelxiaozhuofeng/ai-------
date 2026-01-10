@@ -1,5 +1,6 @@
 import { buildTokenizedChapterWrapper, renderTokenizedChapterContent } from '../../utils/tokenizer.js';
-import { upsertVocabularyItems, updatePageProgress } from '../../db.js';
+import { updatePageProgressCloud } from '../../supabase/progress-repo.js';
+import { upsertBookVocabularyItems } from '../../supabase/vocabulary-repo.js';
 import { WORD_STATUSES } from '../../word-status.js';
 
 export function createPaginationEngine({
@@ -186,7 +187,7 @@ export function createPaginationEngine({
     pageProgressSaveTimer = setTimeout(async () => {
       try {
         const chapterId = state.currentBook.chapters?.[state.currentChapterIndex]?.id || null;
-        await updatePageProgress(state.currentBookId, { chapterId, pageNumber: state.currentPageIndex, scrollPosition: 0 });
+        await updatePageProgressCloud(state.currentBookId, { chapterId, pageNumber: state.currentPageIndex, scrollPosition: 0 });
       } catch (error) {
         console.warn('Failed to save page progress:', error);
       }
@@ -254,7 +255,7 @@ export function createPaginationEngine({
     if (updates.length === 0) return;
 
     try {
-      const records = await upsertVocabularyItems(updates);
+      const records = await upsertBookVocabularyItems(updates);
       records.forEach((record) => state.vocabularyByWord.set(record.word, record));
     } catch (error) {
       console.warn('Failed to persist page-turn word statuses:', error);

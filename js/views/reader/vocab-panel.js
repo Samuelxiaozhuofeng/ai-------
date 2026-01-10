@@ -4,11 +4,10 @@ import { ensureGlobalLearningCard, removeBookFromGlobalLearningCard, upsertGloba
 import { getSettings, getAnkiSettings } from '../../storage.js';
 import { addNote } from '../../anki-service.js';
 import {
-  deleteVocabularyItem,
-  listVocabulary,
   makeGlobalVocabId,
-  upsertVocabularyItem
+  // keep makeGlobalVocabId from IndexedDB helpers
 } from '../../db.js';
+import { deleteBookVocabularyItem, listBookVocabulary, upsertBookVocabularyItem } from '../../supabase/vocabulary-repo.js';
 import { globalVocabByWord, refreshGlobalVocabCache } from '../../core/global-vocab-cache.js';
 import { escapeHtml } from '../../utils/html.js';
 
@@ -32,7 +31,7 @@ export function createVocabPanel({
       return;
     }
 
-    const items = await listVocabulary(state.currentBookId, null);
+    const items = await listBookVocabulary(state.currentBookId, null);
     state.vocabularyByWord = new Map(items.map((item) => [item.word, item]));
   }
 
@@ -138,7 +137,7 @@ export function createVocabPanel({
 
       const existing = state.vocabularyByWord.get(normalizedWord) || null;
       if (existing) {
-        const updated = await upsertVocabularyItem({
+        const updated = await upsertBookVocabularyItem({
           ...existing,
           bookId: state.currentBookId,
           language: existing.language || getCurrentBookLanguage(),
@@ -208,7 +207,7 @@ export function createVocabPanel({
         await removeBookFromGlobalLearningCard(state.selectedWord, state.currentBookId, state.currentBook?.language || null);
         await refreshGlobalVocabCache();
       }
-      await deleteVocabularyItem(state.currentBookId, state.selectedWord);
+      await deleteBookVocabularyItem(state.currentBookId, state.selectedWord);
       state.vocabularyByWord.delete(state.selectedWord);
       if (applyWordStatusesToContainer) applyWordStatusesToContainer(elements.readingContent);
       renderVocabularyPanel();
@@ -216,7 +215,7 @@ export function createVocabPanel({
     }
 
     const existing = existingEntry || {};
-    const updated = await upsertVocabularyItem({
+    const updated = await upsertBookVocabularyItem({
       ...existing,
       bookId: state.currentBookId,
       language: getCurrentBookLanguage(),
@@ -263,7 +262,7 @@ export function createVocabPanel({
         : entry.status === WORD_STATUSES.SEEN ? WORD_STATUSES.LEARNING
           : WORD_STATUSES.LEARNING;
 
-    const updated = await upsertVocabularyItem({ ...entry, bookId: state.currentBookId, language: getCurrentBookLanguage(), word: normalizedWord, status: nextStatus });
+    const updated = await upsertBookVocabularyItem({ ...entry, bookId: state.currentBookId, language: getCurrentBookLanguage(), word: normalizedWord, status: nextStatus });
     if (nextStatus === WORD_STATUSES.LEARNING) {
       const global = await ensureGlobalLearningCard({
         language: getCurrentBookLanguage(),
@@ -604,4 +603,3 @@ export function createVocabPanel({
     setSelectedWordStatus
   };
 }
-

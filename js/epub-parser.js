@@ -3,6 +3,8 @@
  * Parses EPUB files and extracts chapters
  */
 
+import { sanitizeHtml } from './utils/sanitize.js';
+
 /**
  * Extract cover image from EPUB
  * @param {JSZip} zip - Zip object
@@ -159,14 +161,14 @@ export async function parseEpub(file) {
                     // Multiple chapters found in this file
                     subChapters.forEach(subChapter => {
                         if (subChapter.content.trim()) {
-                            chapters.push({
-                                id: `${item.id}_${subChapter.index}`,
-                                title: subChapter.title || `Chapter ${chapters.length + 1}`,
-                                content: subChapter.content.trim(),
-                                rawHtml: subChapter.rawHtml
-                            });
-                        }
-                    });
+                        chapters.push({
+                            id: `${item.id}_${subChapter.index}`,
+                            title: subChapter.title || `Chapter ${chapters.length + 1}`,
+                            content: subChapter.content.trim(),
+                            rawHtml: sanitizeHtml(subChapter.rawHtml)
+                        });
+                    }
+                });
                 } else {
                     // Fallback to single chapter for this file
                     const chapterTitle = chapterDoc.querySelector('h1, h2, h3')?.textContent.trim() || '';
@@ -177,7 +179,7 @@ export async function parseEpub(file) {
                             id: item.id,
                             title: chapterTitle || `Chapter ${chapters.length + 1}`,
                             content: textContent.trim(),
-                            rawHtml: body.innerHTML || ''
+                            rawHtml: sanitizeHtml(body.innerHTML || '')
                         });
                     }
                 }

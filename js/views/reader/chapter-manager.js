@@ -1,6 +1,7 @@
 import { showNotification } from '../../ui/notifications.js';
 import { escapeHtml } from '../../utils/html.js';
 import { getChapterAnalysis, saveChapterAnalysis, updateReadingProgress } from '../../db.js';
+import { sanitizeHtml } from '../../utils/sanitize.js';
 
 export function createChapterManager({
   elements,
@@ -123,7 +124,7 @@ export function createChapterManager({
   function formatMarkdown(content) {
     if (!content) return '<p class="empty-state">No content</p>';
 
-    return content
+    const html = content
       .replace(/^#### (.+)$/gm, '<h4>$1</h4>')
       .replace(/^### (.+)$/gm, '<h3>$1</h3>')
       .replace(/^## (.+)$/gm, '<h2>$1</h2>')
@@ -147,6 +148,7 @@ export function createChapterManager({
       .replace(/<p>(<blockquote>)/g, '$1')
       .replace(/(<\/blockquote>)<\/p>/g, '$1')
       .replace(/<p>(<hr>)<\/p>/g, '$1');
+    return sanitizeHtml(html);
   }
 
   pagination.setLoadChapter(loadChapter);
@@ -160,4 +162,3 @@ export function createChapterManager({
     handleChapterAnalysis
   };
 }
-

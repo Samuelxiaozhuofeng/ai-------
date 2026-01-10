@@ -8,6 +8,7 @@ export const elements = {
   bookshelfView: document.getElementById('bookshelfView'),
   readerView: document.getElementById('readerView'),
   reviewView: document.getElementById('reviewView'),
+  vocabLibraryView: document.getElementById('vocabLibraryView'),
 
   // Bookshelf
   booksContainer: document.getElementById('booksContainer'),
@@ -24,6 +25,7 @@ export const elements = {
   reviewBtn: document.getElementById('reviewBtn'),
   themeToggleBtnShelf: document.getElementById('themeToggleBtnShelf'),
   themeIconShelf: document.getElementById('themeIconShelf'),
+  authBtn: document.getElementById('authBtn'),
 
   // Context Menu
   bookContextMenu: document.getElementById('bookContextMenu'),
@@ -46,6 +48,21 @@ export const elements = {
 
   // File input
   fileInput: document.getElementById('fileInput'),
+
+  // Auth Modal
+  authModal: document.getElementById('authModal'),
+  authModalTitle: document.getElementById('authModalTitle'),
+  closeAuthBtn: document.getElementById('closeAuthBtn'),
+  cancelAuthBtn: document.getElementById('cancelAuthBtn'),
+  authConfigHint: document.getElementById('authConfigHint'),
+  authEmail: document.getElementById('authEmail'),
+  authPassword: document.getElementById('authPassword'),
+  authError: document.getElementById('authError'),
+  submitAuthBtn: document.getElementById('submitAuthBtn'),
+  signOutBtn: document.getElementById('signOutBtn'),
+  authSwitchRow: document.getElementById('authSwitchRow'),
+  authSwitchHint: document.getElementById('authSwitchHint'),
+  authSwitchBtn: document.getElementById('authSwitchBtn'),
 
   // Reader Header
   backToShelfBtn: document.getElementById('backToShelfBtn'),
@@ -171,7 +188,6 @@ export const elements = {
 
   // Vocabulary Library
   vocabLibraryBtn: document.getElementById('vocabLibraryBtn'),
-  vocabLibraryView: document.getElementById('vocabLibraryView'),
   backFromVocabLibraryBtn: document.getElementById('backFromVocabLibraryBtn'),
   startReviewFromLibraryBtn: document.getElementById('startReviewFromLibraryBtn'),
   vocabStatsGrid: document.getElementById('vocabStatsGrid'),
@@ -211,4 +227,3 @@ export const elements = {
   mobileVocabSheet: document.getElementById('mobileVocabSheet'),
   mobileVocabContent: document.getElementById('mobileVocabContent')
 };
-

@@ -6,11 +6,12 @@
 import { makeVocabId, normalizeWord } from './word-status.js';
 
 const DB_NAME = 'LanguageReaderDB';
-const DB_VERSION = 4;
+const DB_VERSION = 5;
 const STORE_BOOKS = 'books';
 const STORE_VOCABULARY = 'vocabulary';
 const STORE_PROGRESS = 'progress';
 const STORE_GLOBAL_VOCAB = 'globalVocabulary';
+const STORE_EPUB_FILES = 'epubFiles';
 
 let db = null;
 
@@ -82,6 +83,13 @@ export async function initDB() {
                 store.createIndex('status_language', ['status', 'language'], { unique: false });
                 store.createIndex('status_language_due', ['status', 'language', 'due'], { unique: false });
                 console.log('📚 Created global vocabulary store');
+            }
+
+            // Create EPUB file cache store (raw blobs)
+            if (oldVersion < 5 && !database.objectStoreNames.contains(STORE_EPUB_FILES)) {
+                const store = database.createObjectStore(STORE_EPUB_FILES, { keyPath: 'path' });
+                store.createIndex('updatedAt', 'updatedAt', { unique: false });
+                console.log('📦 Created epubFiles store');
             }
 
             // Ensure indexes exist for upgraded stores
@@ -580,8 +588,10 @@ export async function upsertGlobalVocabItem(item) {
         const updatedAt = typeof item.updatedAt === 'string' && item.updatedAt ? item.updatedAt : now;
         const createdAt = typeof item.createdAt === 'string' && item.createdAt ? item.createdAt : updatedAt;
         const id = language ? makeGlobalVocabId(language, normalizedWord) : normalizedWord;
+        const skipRemote = Boolean(item?._skipRemote);
+        const { _skipRemote, ...rest } = item || {};
         const record = {
-            ...item,
+            ...rest,
             id,
             language: language || item?.language || null,
             normalizedWord,
@@ -592,7 +602,16 @@ export async function upsertGlobalVocabItem(item) {
         const transaction = db.transaction([STORE_GLOBAL_VOCAB], 'readwrite');
         const store = transaction.objectStore(STORE_GLOBAL_VOCAB);
         const request = store.put(record);
-        request.onsuccess = () => resolve(record);
+        request.onsuccess = () => {
+            if (!skipRemote) {
+                queueMicrotask(() => {
+                    import('./supabase/global-vocab-repo.js')
+                        .then((mod) => mod.upsertGlobalVocabRemote(record))
+                        .catch(() => {});
+                });
+            }
+            resolve(record);
+        };
         request.onerror = () => reject(request.error);
     });
 }
@@ -617,7 +636,14 @@ export async function deleteGlobalVocabItem(idOrWord, language = null) {
         const transaction = db.transaction([STORE_GLOBAL_VOCAB], 'readwrite');
         const store = transaction.objectStore(STORE_GLOBAL_VOCAB);
         const request = store.delete(key);
-        request.onsuccess = () => resolve(true);
+        request.onsuccess = () => {
+            queueMicrotask(() => {
+                import('./supabase/global-vocab-repo.js')
+                    .then((mod) => mod.deleteGlobalVocabRemote(key))
+                    .catch(() => {});
+            });
+            resolve(true);
+        };
         request.onerror = () => reject(request.error);
     });
 }
@@ -919,6 +945,8 @@ export async function saveBook(bookData) {
             title: bookData.title,
             cover: bookData.cover || null,
             language,
+            storagePath: typeof bookData?.storagePath === 'string' ? bookData.storagePath : null,
+            storageUpdatedAt: typeof bookData?.storageUpdatedAt === 'string' ? bookData.storageUpdatedAt : null,
             chapters: bookData.chapters,
             chapterCount: bookData.chapters.length,
             addedAt: bookData.addedAt || new Date().toISOString(),
@@ -966,7 +994,9 @@ export async function getAllBooks() {
                 chapterCount: book.chapterCount,
                 addedAt: book.addedAt,
                 lastReadAt: book.lastReadAt,
-                currentChapter: book.currentChapter
+                currentChapter: book.currentChapter,
+                storagePath: book.storagePath || null,
+                storageUpdatedAt: book.storageUpdatedAt || null
             }));
 
             // Sort by lastReadAt (most recent first)
@@ -1034,6 +1064,91 @@ export async function deleteBook(bookId) {
             console.error('Failed to delete book:', request.error);
             reject(request.error);
         };
+    });
+}
+
+/**
+ * Get cached EPUB blob by storage path.
+ * @param {string} path
+ * @returns {Promise<{blob: Blob, updatedAt: string|null} | null>}
+ */
+export async function getCachedEpub(path) {
+    return new Promise((resolve, reject) => {
+        if (!db) {
+            reject(new Error('Database not initialized'));
+            return;
+        }
+        const key = typeof path === 'string' ? path.trim() : '';
+        if (!key) {
+            resolve(null);
+            return;
+        }
+        const transaction = db.transaction([STORE_EPUB_FILES], 'readonly');
+        const store = transaction.objectStore(STORE_EPUB_FILES);
+        const request = store.get(key);
+        request.onsuccess = () => {
+            const result = request.result || null;
+            if (!result?.blob) {
+                resolve(null);
+                return;
+            }
+            resolve({ blob: result.blob, updatedAt: result.updatedAt || null });
+        };
+        request.onerror = () => reject(request.error);
+    });
+}
+
+/**
+ * Cache EPUB blob by storage path.
+ * @param {string} path
+ * @param {Blob} blob
+ * @param {string|null} updatedAt
+ * @returns {Promise<boolean>}
+ */
+export async function cacheEpub(path, blob, updatedAt = null) {
+    return new Promise((resolve, reject) => {
+        if (!db) {
+            reject(new Error('Database not initialized'));
+            return;
+        }
+        const key = typeof path === 'string' ? path.trim() : '';
+        if (!key || !(blob instanceof Blob)) {
+            resolve(false);
+            return;
+        }
+        const transaction = db.transaction([STORE_EPUB_FILES], 'readwrite');
+        const store = transaction.objectStore(STORE_EPUB_FILES);
+        const request = store.put({
+            path: key,
+            blob,
+            updatedAt: typeof updatedAt === 'string' && updatedAt ? updatedAt : new Date().toISOString()
+        });
+        request.onsuccess = () => resolve(true);
+        request.onerror = () => reject(request.error);
+    });
+}
+
+/**
+ * Remove cached EPUB blob.
+ * @param {string} path
+ * @returns {Promise<boolean>}
+ */
+export async function deleteCachedEpub(path) {
+    return new Promise((resolve, reject) => {
+        if (!db) {
+            reject(new Error('Database not initialized'));
+            return;
+        }
+        const key = typeof path === 'string' ? path.trim() : '';
+        if (!key) {
+            resolve(true);
+            return;
+        }
+        const transaction = db.transaction([STORE_EPUB_FILES], 'readwrite');
+        const store = transaction.objectStore(STORE_EPUB_FILES);
+        const request = store.delete(key);
+        request.onsuccess = () => resolve(true);
+        request.onerror = () => reject(request.error);
     });
 }
 

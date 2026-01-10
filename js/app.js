@@ -19,6 +19,7 @@ import { createReaderController } from './views/reader.js';
 import { createReviewController } from './views/review.js';
 import { createVocabLibraryController } from './views/vocab-library.js';
 import { createSettingsModalController } from './ui/settings-modal.js';
+import { createAuthModalController } from './ui/auth-modal.js';
 
 let currentView = 'bookshelf'; // 'bookshelf' | 'reader' | 'review' | 'vocab-library'
 
@@ -35,6 +36,7 @@ const readerController = createReaderController(elements);
 const reviewController = createReviewController(elements);
 const vocabLibraryController = createVocabLibraryController(elements);
 const settingsModalController = createSettingsModalController(elements);
+const authModalController = createAuthModalController(elements);
 
 async function init() {
   try {
@@ -67,6 +69,12 @@ async function init() {
         if (bookId) syncNow(bookId);
       }
     });
+    authModalController.init({
+      onUserChanged: () => {
+        void bookshelfController.refreshBookshelf();
+        void bookshelfController.refreshBookshelfReviewButtons();
+      }
+    });
 
     setupGlobalKeyHandlers();
 
@@ -91,6 +99,7 @@ function setupGlobalKeyHandlers() {
 
     if (e.key === 'Escape') {
       settingsModalController.handleEscape();
+      authModalController.handleEscape();
       bookshelfController.handleEscape();
       vocabLibraryController.handleEscape();
       readerController.handleEscape();
@@ -130,6 +139,11 @@ async function switchToReview(language = null) {
 
   viewRouter.navigate('review');
   currentView = 'review';
+  try {
+    await syncNow(null);
+  } catch {
+    // ignore
+  }
   await reviewController.startReview(language);
 }
 
@@ -156,6 +170,11 @@ async function switchToVocabLibrary() {
   viewRouter.navigate('vocab-library');
   currentView = 'vocab-library';
 
+  try {
+    await syncNow(null);
+  } catch {
+    // ignore
+  }
   await vocabLibraryController.loadVocabLibrary();
 }
 
@@ -169,7 +188,14 @@ async function switchToReader(bookId) {
 
   if (result?.ok) {
     const id = readerController.getCurrentBookId();
-    if (id) startBackgroundSync(id);
+    if (id) {
+      startBackgroundSync(id);
+      try {
+        await syncNow(id);
+      } catch {
+        // ignore
+      }
+    }
   }
 }
 

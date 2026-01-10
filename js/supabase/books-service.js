@@ -1,0 +1,112 @@
+import { getBook, saveBook } from '../db.js';
+import { parseEpub } from '../epub-parser.js';
+import { showNotification } from '../ui/notifications.js';
+import { getSupabaseClient, isSupabaseConfigured } from './client.js';
+import { downloadEPUB } from './epub-service.js';
+import { getSessionUser } from './session.js';
+
+function requireClient() {
+  if (!isSupabaseConfigured()) throw new Error('Supabase 未配置');
+  const client = getSupabaseClient();
+  if (!client) throw new Error('Supabase client unavailable');
+  return client;
+}
+
+function requireUser(user) {
+  if (!user?.id) throw new Error('请先登录以启用云端同步');
+  return user;
+}
+
+function mapRemoteBook(row) {
+  if (!row) return null;
+  return {
+    id: row.id,
+    title: row.title || '',
+    cover: row.cover || null,
+    language: row.language || 'en',
+    chapterCount: typeof row.chapter_count === 'number' ? row.chapter_count : Number(row.chapter_count || 0),
+    addedAt: row.created_at || row.added_at || row.updated_at || null,
+    lastReadAt: row.last_read_at || row.updated_at || null,
+    currentChapter: typeof row.current_chapter === 'number' ? row.current_chapter : Number(row.current_chapter || 0),
+    storagePath: row.storage_path || null,
+    storageUpdatedAt: row.file_updated_at || row.updated_at || null
+  };
+}
+
+export async function getRemoteBookById(bookId) {
+  const supabase = requireClient();
+  const user = requireUser(await getSessionUser());
+
+  const id = String(bookId || '').trim();
+  if (!id) return null;
+
+  const { data, error } = await supabase.from('books').select('*').eq('user_id', user.id).eq('id', id).maybeSingle();
+  if (error) throw error;
+  return mapRemoteBook(data);
+}
+
+export async function updateRemoteBook(bookId, updates) {
+  const supabase = requireClient();
+  const user = requireUser(await getSessionUser());
+
+  const id = String(bookId || '').trim();
+  if (!id) throw new Error('Missing bookId');
+
+  /** @type {any} */
+  const patch = {};
+  if (typeof updates?.title === 'string') patch.title = updates.title.trim();
+  if (typeof updates?.lastReadAt === 'string') patch.last_read_at = updates.lastReadAt;
+  if (typeof updates?.currentChapter === 'number') patch.current_chapter = updates.currentChapter;
+  if (typeof updates?.chapterCount === 'number') patch.chapter_count = updates.chapterCount;
+  if (typeof updates?.language === 'string') patch.language = updates.language.trim();
+  if (typeof updates?.cover === 'string' || updates?.cover === null) patch.cover = updates.cover;
+
+  patch.updated_at = new Date().toISOString();
+
+  const { data, error } = await supabase.from('books').update(patch).eq('user_id', user.id).eq('id', id).select('*').single();
+  if (error) throw error;
+  return mapRemoteBook(data);
+}
+
+/**
+ * Ensure a book is cached locally in IndexedDB (parsed chapters).
+ * Downloads EPUB from Supabase Storage if missing locally.
+ * @param {string} bookId
+ * @returns {Promise<any|null>}
+ */
+export async function ensureLocalBookCached(bookId) {
+  const id = String(bookId || '').trim();
+  if (!id) return null;
+
+  const existing = await getBook(id);
+  if (existing) return existing;
+
+  const remote = await getRemoteBookById(id);
+  if (!remote?.storagePath) throw new Error('云端书籍缺少 storage_path');
+
+  if (typeof window !== 'undefined' && typeof window.JSZip === 'undefined') {
+    throw new Error('JSZip 未加载（请确保网络可访问 CDN，或将 JSZip 放到本地引用）');
+  }
+
+  const blob = await downloadEPUB(remote.storagePath, { expectedUpdatedAt: remote.storageUpdatedAt || null });
+  const file = new File([blob], `${id}.epub`, { type: 'application/epub+zip' });
+
+  const parsed = await parseEpub(file);
+
+  await saveBook({
+    id,
+    title: remote.title || parsed.title,
+    cover: remote.cover || parsed.cover,
+    chapters: parsed.chapters,
+    chapterCount: parsed.chapters.length,
+    currentChapter: remote.currentChapter || 0,
+    addedAt: remote.addedAt || new Date().toISOString(),
+    lastReadAt: remote.lastReadAt || new Date().toISOString(),
+    language: remote.language || 'en',
+    storagePath: remote.storagePath,
+    storageUpdatedAt: remote.storageUpdatedAt || new Date().toISOString()
+  });
+
+  showNotification('已从云端下载并缓存到本地', 'success');
+  return getBook(id);
+}

@@ -4,7 +4,8 @@ A LingQ-style language learning EPUB reader:
 - Page-flip reading (←/→ to turn pages)
 - Click words to track status: `new` → `learning` → `known`
 - Optional AI word analysis + Anki export
-- Optional FastAPI + SQLite backend to sync vocabulary and reading progress
+- Optional cloud sync via Supabase (Auth + Postgres + Storage)
+- Legacy optional FastAPI + SQLite backend (deprecated)
 
 ## Run (Frontend)
 
@@ -38,9 +39,12 @@ uvicorn main:app --reload --port 8000
 
 ## Enable Sync (Optional)
 
-In Reader → Settings → `同步`:
-- Set `Backend URL` (default `http://localhost:8000`)
-- Enable sync and click `Sync Now`
+### Supabase (Recommended)
+- Follow `docs/SUPABASE.md`
+- In the app: click `🔐 登录` then enable sync in `⚙️ 设置 → 🔄 同步`
+
+### FastAPI (Legacy / Deprecated)
+In Reader → Settings → `同步` you can still set `Backend URL` and enable sync.
 
 ## Word Status Guide
 
@@ -54,6 +58,8 @@ Click a word in the reader to open it in the Vocabulary panel, then use:
 - `移除` → back to `new`
 
 ## Backend API (Summary)
+
+This is the legacy FastAPI backend (deprecated when using Supabase).
 
 - `GET /health`
 - `GET /api/v1/vocabulary`

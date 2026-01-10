@@ -2,10 +2,12 @@ import { ModalManager } from '../../ui/modal-manager.js';
 import { showNotification } from '../../ui/notifications.js';
 import { hideLoading, showLoading } from '../../ui/loading.js';
 import { saveLayout, SUPPORTED_LANGUAGES } from '../../storage.js';
-import { getBook, getReadingProgress as getPageProgress, makeGlobalVocabId } from '../../db.js';
+import { getBook, makeGlobalVocabId } from '../../db.js';
 import { getLanguageFilter } from '../../core/language-filter.js';
 import { globalVocabByWord, refreshGlobalVocabCache } from '../../core/global-vocab-cache.js';
 import { WORD_STATUSES } from '../../word-status.js';
+import { ensureLocalBookCached } from '../../supabase/books-service.js';
+import { getReadingProgressCloud } from '../../supabase/progress-repo.js';
 
 import { createWordHighlighter } from './word-highlighter.js';
 import { createVocabPanel } from './vocab-panel.js';
@@ -198,7 +200,15 @@ export function createReaderController(elements) {
     try {
       showLoading('加载书籍...');
 
-      const book = await getBook(bookId);
+      let book = await getBook(bookId);
+      if (!book) {
+        try {
+          await ensureLocalBookCached(bookId);
+          book = await getBook(bookId);
+        } catch (error) {
+          console.warn('Failed to fetch book from cloud:', error);
+        }
+      }
       if (!book) throw new Error('书籍未找到');
 
       state.currentBook = book;
@@ -207,7 +217,7 @@ export function createReaderController(elements) {
       state.encounterCountByWord = new Map();
       state.clickedWordsOnPage = new Set();
 
-      const pageProgress = await getPageProgress(bookId);
+      const pageProgress = await getReadingProgressCloud(bookId);
       const progressChapterId = pageProgress?.chapterId || null;
       const progressPageNumber = typeof pageProgress?.pageNumber === 'number' ? pageProgress.pageNumber : 0;
       if (progressChapterId && Array.isArray(book.chapters)) {
