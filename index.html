@@ -64,6 +64,12 @@
           </div>
         </div>
       </div>
+      
+      <!-- Mobile Floating Action Button for Review -->
+      <button class="fab-btn" id="mobileReviewBtn" title="开始复习" aria-label="开始复习">
+        <span class="icon">🗓️</span>
+        <span class="fab-badge" id="mobileReviewBadge"></span>
+      </button>
     </section>
 
     <!-- Reader View (Hidden by default) -->
@@ -180,6 +186,14 @@
     <div class="mobile-vocab-overlay" id="mobileVocabOverlay">
       <div class="mobile-vocab-sheet" id="mobileVocabSheet">
         <div class="sheet-handle"></div>
+        <div class="mobile-sheet-header">
+          <span class="sheet-title">词汇分析</span>
+          <label class="auto-anki-toggle mobile-toggle" title="自动加入学习">
+            <input type="checkbox" id="mobileAutoAnkiToggle">
+            <span class="toggle-slider"></span>
+            <span class="toggle-label">Auto Study</span>
+          </label>
+        </div>
         <div class="sheet-content" id="mobileVocabContent">
           <!-- Content will be mirrored from vocab-panel on mobile -->
         </div>

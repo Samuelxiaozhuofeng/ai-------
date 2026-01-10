@@ -58,3 +58,11 @@
   font-size: 1.1em;
 }
 
+/* FAB Button */
+.fab-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+}
+

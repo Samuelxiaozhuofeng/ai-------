@@ -224,6 +224,13 @@ export function createBookshelfController(elements) {
         elements.reviewBtn.style.display = '';
         elements.reviewBtn.disabled = due === 0;
         elements.reviewBtn.innerHTML = `<span class="icon">🗓️</span> 复习 (${due})`;
+
+        if (elements.mobileReviewBtn) {
+          elements.mobileReviewBtn.disabled = due === 0;
+          if (elements.mobileReviewBadge) {
+            elements.mobileReviewBadge.textContent = due > 0 ? due.toString() : '';
+          }
+        }
         return;
       }
 
@@ -241,8 +248,22 @@ export function createBookshelfController(elements) {
 
       elements.reviewBtn.style.display = 'none';
 
+      const totalDue = entries.reduce((acc, curr) => acc + curr.due, 0);
+      const currentLanguage = getLanguageFilter();
+      const currentLanguageDue = entries.find((it) => it.lang === currentLanguage)?.due || 0;
+
+      if (elements.mobileReviewBtn) {
+        elements.mobileReviewBtn.disabled = totalDue === 0;
+        if (elements.mobileReviewBadge) {
+          elements.mobileReviewBadge.textContent = currentLanguageDue > 0 ? currentLanguageDue.toString() : '';
+        }
+      }
+
       if (entries.length === 0) {
         elements.reviewButtonsContainer.innerHTML = '';
+        elements.reviewBtn.style.display = '';
+        elements.reviewBtn.disabled = true;
+        elements.reviewBtn.innerHTML = `<span class="icon">🗓️</span> 复习`;
         return;
       }
 
@@ -461,6 +482,12 @@ export function createBookshelfController(elements) {
 
     elements.themeToggleBtnShelf?.addEventListener('click', onToggleTheme);
     elements.reviewBtn?.addEventListener('click', () => navigation.openReview(null));
+    elements.mobileReviewBtn?.addEventListener('click', () => {
+      const fsrsSettings = getFsrsSettings();
+      const reviewMode = fsrsSettings?.reviewMode === 'mixed' ? 'mixed' : 'grouped';
+      const language = reviewMode === 'grouped' ? getLanguageFilter() : null;
+      navigation.openReview(language);
+    });
 
     elements.vocabLibraryBtn?.addEventListener('click', onOpenVocabLibrary);
 

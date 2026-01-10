@@ -140,8 +140,11 @@ export const elements = {
 
   // Auto Anki Toggle
   autoAnkiToggle: document.getElementById('autoAnkiToggle'),
+  mobileAutoAnkiToggle: document.getElementById('mobileAutoAnkiToggle'),
 
   // Review
+  mobileReviewBtn: document.getElementById('mobileReviewBtn'),
+  mobileReviewBadge: document.getElementById('mobileReviewBadge'),
   backFromReviewBtn: document.getElementById('backFromReviewBtn'),
   reviewTitle: document.getElementById('reviewTitle'),
   reviewStats: document.getElementById('reviewStats'),

@@ -67,7 +67,9 @@ export function createSettingsModalController(elements) {
     }
 
     const ankiSettings = getAnkiSettings();
-    elements.autoAnkiToggle.checked = Boolean(ankiSettings.autoAddToStudy ?? ankiSettings.autoAddToAnki ?? false);
+    const isAutoStudy = Boolean(ankiSettings.autoAddToStudy ?? ankiSettings.autoAddToAnki ?? false);
+    elements.autoAnkiToggle.checked = isAutoStudy;
+    if (elements.mobileAutoAnkiToggle) elements.mobileAutoAnkiToggle.checked = isAutoStudy;
 
     if (settings.model) {
       const existing = Array.from(elements.modelSelect.options).find((opt) => opt.value === settings.model);
@@ -221,8 +223,13 @@ export function createSettingsModalController(elements) {
     }
   }
 
-  function handleAutoStudyToggle() {
-    const enabled = Boolean(elements.autoAnkiToggle.checked);
+  function handleAutoStudyToggle(e) {
+    const enabled = Boolean(e.target.checked);
+    
+    // Sync UI
+    if (elements.autoAnkiToggle) elements.autoAnkiToggle.checked = enabled;
+    if (elements.mobileAutoAnkiToggle) elements.mobileAutoAnkiToggle.checked = enabled;
+
     setAutoStudyEnabled(enabled);
 
     const ankiSettings = getAnkiSettings();
@@ -305,6 +312,9 @@ export function createSettingsModalController(elements) {
     elements.syncNowBtn.addEventListener('click', onSyncNow);
 
     elements.autoAnkiToggle.addEventListener('change', handleAutoStudyToggle);
+    if (elements.mobileAutoAnkiToggle) {
+      elements.mobileAutoAnkiToggle.addEventListener('change', handleAutoStudyToggle);
+    }
 
     elements.fsrsRequestRetention?.addEventListener('input', () => {
       const value = Number(elements.fsrsRequestRetention.value);
