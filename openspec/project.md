@@ -6,7 +6,6 @@
 - Click words to view **instant AI explanations** and manage word learning status (**new → seen → learning → known**)
 - Get chapter-level analysis with summaries, key themes, and vocabulary lists
 - Review vocabulary via a built-in **FSRS**-based spaced repetition session (cross-book)
-- Export vocabulary to **Anki** via AnkiConnect for spaced repetition learning
 - Persist vocabulary status and reading progress (chapter + page) across sessions
 - Optionally sync vocabulary + progress to a lightweight backend (FastAPI + SQLite)
 
@@ -22,7 +21,6 @@ The app provides a bilingual experience (Chinese/English UI) and supports multip
   - IndexedDB for vocabulary status and page-level progress
   - localStorage for user settings, theme, layout preferences, and optional sync config
 - **AI Integration**: OpenAI-compatible API for vocabulary and chapter analysis
-- **Anki Integration**: AnkiConnect REST API (localhost:8765)
 - **Backend (Optional)**: Python FastAPI + SQLite (for persistence across devices)
 
 ## Project Conventions
@@ -46,7 +44,6 @@ The app provides a bilingual experience (Chinese/English UI) and supports multip
   - `word-status.js` - Word normalization + status helpers
   - `sync-service.js` - Optional backend sync (vocabulary + progress)
   - `ai-service.js` - AI API calls for vocabulary and chapter analysis
-  - `anki-service.js` - AnkiConnect integration
   - `db.js` - IndexedDB operations for book persistence
   - `storage.js` - localStorage for settings and preferences
 - **Single Page Application**: One `index.html` with view switching (bookshelf ↔ reader ↔ review)
@@ -70,22 +67,18 @@ This is a **language learning application** that helps readers study foreign lan
 - **Contextual Analysis**: AI explains words within their sentence context, not just dictionary definitions
 - **Chapter Analysis**: AI provides summaries, themes, and vocabulary lists adjusted to the user's reading level
 - **FSRS Review**: Learning words are scheduled globally (one card per word across all books) and reviewed with Again/Hard/Good/Easy
-- **Anki Export**: Vocabulary cards can be sent to Anki with customizable field mapping:
-  - Word, Context, Meaning, Usage, Contextual Meaning
 - **Reading Progress**: Tracked per book and persisted in IndexedDB
 
 ## Important Constraints
 - **Backend Optional**: App works offline with IndexedDB; backend sync is optional
-- **CORS**: AI API and AnkiConnect must allow browser requests
+- **CORS**: AI API must allow browser requests
 - **Browser Storage Limits**: IndexedDB is used for large book data; localStorage for small settings
-- **AnkiConnect Requirement**: Anki must be running locally with AnkiConnect plugin installed
 - **EPUB Only**: Only EPUB format is supported (no PDF, MOBI, etc.)
 
 ## External Dependencies
 | Service | URL | Purpose |
 |---------|-----|---------|
 | OpenAI-compatible API | Configurable (`apiUrl` setting) | Vocabulary and chapter analysis |
-| AnkiConnect | `http://localhost:8765` | Export vocabulary cards to Anki |
 | Optional Backend | `http://localhost:8000` | Vocabulary + progress sync (FastAPI) |
 | Google Fonts | `fonts.googleapis.com` | Inter font family |
 | JSZip CDN | `cdnjs.cloudflare.com/ajax/libs/jszip` | EPUB file extraction |

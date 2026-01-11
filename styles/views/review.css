@@ -1,31 +1,4 @@
 /* ============================================
-   Vocab Card - Anki Add Button
-   ============================================ */
-.vocab-card-footer {
-  display: flex;
-  justify-content: flex-start;
-  align-items: center;
-  margin-top: var(--spacing-sm);
-  padding-top: var(--spacing-sm);
-  border-top: 1px solid var(--border-subtle);
-}
-
-.vocab-card-anki-btn {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 28px;
-  height: 28px;
-  border: none;
-  border-radius: 50%;
-  background: var(--bg-elevated);
-  color: var(--text-secondary);
-  cursor: pointer;
-  transition: all 0.2s ease;
-  font-size: 16px;
-}
-
-/* ============================================
    Review View
    ============================================ */
 .review-view {
@@ -189,42 +162,6 @@
 
   .review-value {
     font-size: 16px;
-  }
-}
-
-.vocab-card-anki-btn:hover {
-  background: var(--accent-primary);
-  color: white;
-  transform: scale(1.1);
-}
-
-.vocab-card-anki-btn.added {
-  background: var(--accent-success);
-  color: white;
-  cursor: default;
-}
-
-.vocab-card-anki-btn.added:hover {
-  transform: none;
-}
-
-.vocab-card-anki-btn.loading {
-  pointer-events: none;
-}
-
-.vocab-card-anki-btn.loading::after {
-  content: '';
-  width: 14px;
-  height: 14px;
-  border: 2px solid rgba(255, 255, 255, 0.3);
-  border-top-color: white;
-  border-radius: 50%;
-  animation: spin 0.8s linear infinite;
-}
-
-@keyframes spin {
-  to {
-    transform: rotate(360deg);
   }
 }
 

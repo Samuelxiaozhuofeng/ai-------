@@ -8,7 +8,8 @@ const STORAGE_KEYS = {
   SETTINGS: "language-reader-settings",
   THEME: "language-reader-theme",
   LAYOUT: "language-reader-layout",
-  ANKI_SETTINGS: "language-reader-anki-settings",
+  READING_SETTINGS: "language-reader-reading-settings",
+  AUTO_STUDY: "language-reader-auto-study",
 };
 
 export const SUPPORTED_LANGUAGES = /** @type {const} */ ({
@@ -33,6 +34,28 @@ const DEFAULT_LAYOUT = {
   readerWidth: 70, // percentage
   panelWidth: 30,  // percentage
 };
+
+const DEFAULT_READING_SETTINGS = {
+  fontPreset: 'serif', // 'serif' | 'sans' | 'system'
+  fontSize: 20, // px
+  lineHeight: 1.6
+};
+
+function normalizeReadingSettings(raw) {
+  const fontPreset = raw?.fontPreset === 'sans' || raw?.fontPreset === 'system' ? raw.fontPreset : 'serif';
+
+  let fontSize = Number(raw?.fontSize);
+  if (!Number.isFinite(fontSize)) fontSize = DEFAULT_READING_SETTINGS.fontSize;
+  fontSize = Math.max(14, Math.min(28, fontSize));
+  fontSize = Math.round(fontSize / 2) * 2;
+
+  let lineHeight = Number(raw?.lineHeight);
+  if (!Number.isFinite(lineHeight)) lineHeight = DEFAULT_READING_SETTINGS.lineHeight;
+  lineHeight = Math.max(1.4, Math.min(2.0, lineHeight));
+  lineHeight = Math.round(lineHeight * 10) / 10;
+
+  return { fontPreset, fontSize, lineHeight };
+}
 
 export const FSRS_SETTINGS_KEY = 'language-reader-fsrs-settings';
 
@@ -159,59 +182,94 @@ export function saveLayout(layout) {
   }
 }
 
-// Default Anki settings
-const DEFAULT_ANKI_SETTINGS = {
-  deckName: '',
-  modelName: '',
-  fieldMapping: {
-    word: '',           // 词汇
-    context: '',        // 上下文（currentSentence）
-    meaning: '',        // 含义
-    usage: '',          // 用法
-    contextualMeaning: '' // 上下文含义
-  },
-  autoAddToStudy: false,
-  // Back-compat (toggle used to be "Auto Add to Anki")
-  autoAddToAnki: false
-};
-
-/**
- * Get Anki settings from localStorage
- * @returns {Object} Anki settings object
- */
-export function getAnkiSettings() {
+export function getAutoStudyPreference() {
   try {
-    const stored = localStorage.getItem(STORAGE_KEYS.ANKI_SETTINGS);
-    if (stored) {
-      const parsed = JSON.parse(stored);
-      const autoAddToStudy = parsed.autoAddToStudy ?? parsed.autoAddToAnki ?? DEFAULT_ANKI_SETTINGS.autoAddToStudy;
-      // Merge with defaults to ensure all fields exist
-      return {
-        ...DEFAULT_ANKI_SETTINGS,
-        ...parsed,
-        fieldMapping: {
-          ...DEFAULT_ANKI_SETTINGS.fieldMapping,
-          ...(parsed.fieldMapping || {})
-        },
-        autoAddToStudy
-      };
+    const stored = localStorage.getItem(STORAGE_KEYS.AUTO_STUDY);
+    if (stored != null) {
+      return stored === 'true';
+    }
+
+    // Back-compat migration: previously stored under Anki settings.
+    const legacyRaw = localStorage.getItem('language-reader-anki-settings');
+    if (legacyRaw) {
+      const parsed = JSON.parse(legacyRaw);
+      const enabled = Boolean(parsed?.autoAddToStudy ?? parsed?.autoAddToAnki ?? false);
+      localStorage.setItem(STORAGE_KEYS.AUTO_STUDY, enabled ? 'true' : 'false');
+      return enabled;
     }
   } catch (e) {
-    console.error("Failed to load Anki settings:", e);
+    console.error("Failed to load auto study preference:", e);
   }
-  return { ...DEFAULT_ANKI_SETTINGS };
+  return false;
 }
 
-/**
- * Save Anki settings to localStorage
- * @param {Object} settings - Anki settings to save
- */
-export function saveAnkiSettings(settings) {
+export function saveAutoStudyPreference(enabled) {
   try {
-    localStorage.setItem(STORAGE_KEYS.ANKI_SETTINGS, JSON.stringify(settings));
+    localStorage.setItem(STORAGE_KEYS.AUTO_STUDY, Boolean(enabled) ? 'true' : 'false');
     return true;
   } catch (e) {
-    console.error("Failed to save Anki settings:", e);
+    console.error("Failed to save auto study preference:", e);
     return false;
   }
+}
+
+export function getReadingSettings() {
+  try {
+    const stored = localStorage.getItem(STORAGE_KEYS.READING_SETTINGS);
+    if (stored) {
+      return normalizeReadingSettings({ ...DEFAULT_READING_SETTINGS, ...JSON.parse(stored) });
+    }
+  } catch (e) {
+    console.error("Failed to load reading settings:", e);
+  }
+  return { ...DEFAULT_READING_SETTINGS };
+}
+
+export function saveReadingSettings(settings) {
+  try {
+    const normalized = normalizeReadingSettings(settings);
+    localStorage.setItem(STORAGE_KEYS.READING_SETTINGS, JSON.stringify(normalized));
+    return true;
+  } catch (e) {
+    console.error("Failed to save reading settings:", e);
+    return false;
+  }
+}
+
+function bindReadingContentTypography() {
+  const readingContent = document.getElementById('readingContent');
+  if (!readingContent) return false;
+
+  // Ensure reading preferences win even against responsive `!important` overrides.
+  readingContent.style.setProperty('font-family', 'var(--reader-font-family)', 'important');
+  readingContent.style.setProperty('font-size', 'var(--reader-font-size)', 'important');
+  readingContent.style.setProperty('line-height', 'var(--reader-line-height)', 'important');
+  return true;
+}
+
+export function applyReadingSettings(nextSettings = getReadingSettings()) {
+  if (typeof document === 'undefined') return;
+  const settings = normalizeReadingSettings(nextSettings);
+
+  const stackVar =
+    settings.fontPreset === 'sans'
+      ? 'var(--font-stack-sans)'
+      : settings.fontPreset === 'system'
+        ? 'var(--font-stack-system)'
+        : 'var(--font-stack-serif)';
+
+  document.documentElement.style.setProperty('--reader-font-family', stackVar);
+  document.documentElement.style.setProperty('--reader-font-size', `${settings.fontSize}px`);
+  document.documentElement.style.setProperty('--reader-line-height', String(settings.lineHeight));
+
+  if (!bindReadingContentTypography() && typeof window !== 'undefined') {
+    window.addEventListener('DOMContentLoaded', () => bindReadingContentTypography(), { once: true });
+  }
+}
+
+// Apply persisted reading settings on startup.
+try {
+  if (typeof window !== 'undefined') applyReadingSettings();
+} catch (e) {
+  console.error("Failed to apply reading settings:", e);
 }

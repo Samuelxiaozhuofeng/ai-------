@@ -3,7 +3,7 @@
 A LingQ-style language learning EPUB reader:
 - Page-flip reading (←/→ to turn pages)
 - Click words to track status: `new` → `learning` → `known`
-- Optional AI word analysis + Anki export
+- Optional AI word analysis
 - Optional cloud sync via Supabase (Auth + Postgres + Storage)
 - Legacy optional FastAPI + SQLite backend (deprecated)
 

@@ -72,6 +72,7 @@ export const elements = {
   bookTitle: document.getElementById('bookTitle'),
   toggleSidebarBtn: document.getElementById('toggleSidebarBtn'),
   themeToggleBtn: document.getElementById('themeToggleBtn'),
+  typographyBtn: document.getElementById('typographyBtn'),
   themeIcon: document.getElementById('themeIcon'),
   syncIndicator: document.getElementById('syncIndicator'),
   syncIndicatorShelf: document.getElementById('syncIndicatorShelf'),
@@ -141,27 +142,15 @@ export const elements = {
 
   // Settings Tabs
   settingsTabAI: document.getElementById('settingsTabAI'),
-  settingsTabAnki: document.getElementById('settingsTabAnki'),
   settingsTabSync: document.getElementById('settingsTabSync'),
   settingsTabFSRS: document.getElementById('settingsTabFSRS'),
   aiSettingsContent: document.getElementById('aiSettingsContent'),
-  ankiSettingsContent: document.getElementById('ankiSettingsContent'),
   syncSettingsContent: document.getElementById('syncSettingsContent'),
   fsrsSettingsContent: document.getElementById('fsrsSettingsContent'),
 
-  // Anki Settings Form
-  ankiDeckSelect: document.getElementById('ankiDeckSelect'),
-  ankiModelSelect: document.getElementById('ankiModelSelect'),
-  refreshAnkiBtn: document.getElementById('refreshAnkiBtn'),
-  fieldWord: document.getElementById('fieldWord'),
-  fieldContext: document.getElementById('fieldContext'),
-  fieldMeaning: document.getElementById('fieldMeaning'),
-  fieldUsage: document.getElementById('fieldUsage'),
-  fieldContextualMeaning: document.getElementById('fieldContextualMeaning'),
-
-  // Auto Anki Toggle
-  autoAnkiToggle: document.getElementById('autoAnkiToggle'),
-  mobileAutoAnkiToggle: document.getElementById('mobileAutoAnkiToggle'),
+  // Auto Study Toggle
+  autoStudyToggle: document.getElementById('autoStudyToggle'),
+  mobileAutoStudyToggle: document.getElementById('mobileAutoStudyToggle'),
 
   // Review
   mobileReviewBtn: document.getElementById('mobileReviewBtn'),

@@ -1,8 +1,7 @@
 import { WORD_STATUSES } from '../../word-status.js';
 import { showNotification } from '../../ui/notifications.js';
 import { ensureGlobalLearningCard, removeBookFromGlobalLearningCard, upsertGlobalAnalysis } from '../../srs-service.js';
-import { getSettings, getAnkiSettings } from '../../storage.js';
-import { addNote } from '../../anki-service.js';
+import { getSettings } from '../../storage.js';
 import {
   makeGlobalVocabId,
   // keep makeGlobalVocabId from IndexedDB helpers
@@ -397,76 +396,9 @@ export function createVocabPanel({
                 </div>
             ` : ''}
         </div>
-        <div class="vocab-card-footer">
-            <button class="vocab-card-anki-btn" title="添加到 Anki">+</button>
-        </div>
     `;
 
-    const ankiBtn = card.querySelector('.vocab-card-anki-btn');
-    ankiBtn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      void handleAddToAnki(card, ankiBtn);
-    });
-
     return card;
-  }
-
-  async function handleAddToAnki(card, button) {
-    if (button.classList.contains('added')) return;
-
-    const ankiSettings = getAnkiSettings();
-
-    if (!ankiSettings.deckName || !ankiSettings.modelName) {
-      showNotification('请先在设置中配置 Anki 牌组和笔记类型', 'error');
-      return;
-    }
-
-    const word = card.dataset.word || '';
-    const context = card.dataset.context || '';
-    const meaning = card.dataset.meaning || '';
-    const usage = card.dataset.usage || '';
-    const contextualMeaning = card.dataset.contextualMeaning || '';
-
-    const fields = {};
-    const { fieldMapping } = ankiSettings;
-
-    if (fieldMapping.word && word) {
-      fields[fieldMapping.word] = word;
-    }
-    if (fieldMapping.context && context) {
-      fields[fieldMapping.context] = context;
-    }
-    if (fieldMapping.meaning && meaning) {
-      fields[fieldMapping.meaning] = meaning;
-    }
-    if (fieldMapping.usage && usage) {
-      fields[fieldMapping.usage] = usage;
-    }
-    if (fieldMapping.contextualMeaning && contextualMeaning) {
-      fields[fieldMapping.contextualMeaning] = contextualMeaning;
-    }
-
-    if (Object.keys(fields).length === 0) {
-      showNotification('请先在设置中配置字段映射', 'error');
-      return;
-    }
-
-    button.classList.add('loading');
-    button.textContent = '';
-
-    try {
-      await addNote(ankiSettings.deckName, ankiSettings.modelName, fields);
-
-      button.classList.remove('loading');
-      button.classList.add('added');
-      button.textContent = '✓';
-      button.title = '已添加到 Anki';
-    } catch (error) {
-      console.error('Failed to add to Anki:', error);
-      button.classList.remove('loading');
-      button.textContent = '+';
-      showNotification(error.message, 'error');
-    }
   }
 
   function renderVocabularyPanel() {

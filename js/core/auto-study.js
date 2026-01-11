@@ -1,10 +1,9 @@
-import { getAnkiSettings } from '../storage.js';
+import { getAutoStudyPreference } from '../storage.js';
 
 let isAutoStudyEnabled = false;
 
 export function initAutoStudyEnabled() {
-  const ankiSettings = getAnkiSettings();
-  isAutoStudyEnabled = ankiSettings.autoAddToStudy ?? ankiSettings.autoAddToAnki ?? false;
+  isAutoStudyEnabled = getAutoStudyPreference();
   return isAutoStudyEnabled;
 }
 
@@ -19,4 +18,3 @@ export function setAutoStudyEnabled(value) {
   isAutoStudyEnabled = Boolean(value);
   return isAutoStudyEnabled;
 }
-

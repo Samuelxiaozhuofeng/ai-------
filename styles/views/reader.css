@@ -644,6 +644,9 @@
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-lg);
   overflow: hidden;
+  max-height: calc(100vh - 48px);
+  display: flex;
+  flex-direction: column;
 }
 
 .modal-header {
@@ -656,6 +659,8 @@
 
 .modal-body {
   padding: var(--spacing-lg);
+  flex: 1;
+  overflow-y: auto;
 }
 
 .modal-footer {
@@ -755,4 +760,3 @@ input[type="range"] {
 .input-group .input {
   flex: 1;
 }
-

@@ -1,13 +1,14 @@
 import {
-  getAnkiSettings,
   getFsrsSettings,
+  getReadingSettings,
   getSettings,
-  saveAnkiSettings,
   saveFsrsSettings,
+  saveAutoStudyPreference,
+  saveReadingSettings,
+  applyReadingSettings,
   saveSettings
 } from '../storage.js';
 import { fetchModels } from '../ai-service.js';
-import { getDeckNames, getModelFieldNames, getModelNames } from '../anki-service.js';
 import { ModalManager } from './modal-manager.js';
 import { getAutoStudyEnabled, setAutoStudyEnabled } from '../core/auto-study.js';
 import { showNotification } from './notifications.js';
@@ -23,8 +24,91 @@ export function createSettingsModalController(elements) {
   /** @type {{ onAfterSave: (settings: any) => void }} */
   let hooks = { onAfterSave: () => {} };
 
+  /** @type {{ fontPreset: 'serif'|'sans'|'system', fontSize: number, lineHeight: number } | null} */
+  let readingBaselineSettings = null;
+  /** @type {{ fontPreset: 'serif'|'sans'|'system', fontSize: number, lineHeight: number } | null} */
+  let readingPendingSettings = null;
+  let readingDirty = false;
+
   function setHooks(nextHooks) {
     hooks = { ...hooks, ...nextHooks };
+  }
+
+  function getReadingDomRefs() {
+    const tab = document.getElementById('settingsTabReading');
+    const content = document.getElementById('readingSettingsContent');
+    const fontPreset = document.getElementById('readingFontPreset');
+    const fontSize = document.getElementById('readingFontSize');
+    const fontSizeValue = document.getElementById('readingFontSizeValue');
+    const lineHeight = document.getElementById('readingLineHeight');
+    const lineHeightValue = document.getElementById('readingLineHeightValue');
+
+    return { tab, content, fontPreset, fontSize, fontSizeValue, lineHeight, lineHeightValue };
+  }
+
+  function normalizeFontSize(value) {
+    let next = Number(value);
+    if (!Number.isFinite(next)) next = 20;
+    next = Math.max(14, Math.min(28, next));
+    next = Math.round(next / 2) * 2;
+    return next;
+  }
+
+  function normalizeLineHeight(value) {
+    let next = Number(value);
+    if (!Number.isFinite(next)) next = 1.6;
+    next = Math.max(1.4, Math.min(2.0, next));
+    next = Math.round(next * 10) / 10;
+    return next;
+  }
+
+  function readingFormToSettings() {
+    const refs = getReadingDomRefs();
+    const fontPresetRaw = refs.fontPreset?.value;
+    const fontPreset = fontPresetRaw === 'sans' || fontPresetRaw === 'system' ? fontPresetRaw : 'serif';
+    const fontSize = normalizeFontSize(refs.fontSize?.value);
+    const lineHeight = normalizeLineHeight(refs.lineHeight?.value);
+    return { fontPreset, fontSize, lineHeight };
+  }
+
+  function updateReadingUI(settings) {
+    const refs = getReadingDomRefs();
+    if (refs.fontPreset) refs.fontPreset.value = settings.fontPreset;
+    if (refs.fontSize) refs.fontSize.value = String(settings.fontSize);
+    if (refs.lineHeight) refs.lineHeight.value = String(settings.lineHeight);
+
+    if (refs.fontSizeValue) refs.fontSizeValue.textContent = `${settings.fontSize}px`;
+    if (refs.lineHeightValue) refs.lineHeightValue.textContent = settings.lineHeight.toFixed(1);
+  }
+
+  function loadReadingSettingsToForm() {
+    const refs = getReadingDomRefs();
+    if (!refs.content) return;
+
+    const settings = getReadingSettings();
+    readingBaselineSettings = settings;
+    readingPendingSettings = { ...settings };
+    readingDirty = false;
+    updateReadingUI(settings);
+
+    // Ensure the current persisted settings are applied when opening the modal.
+    applyReadingSettings(settings);
+  }
+
+  function handleReadingInput() {
+    const next = readingFormToSettings();
+    readingPendingSettings = next;
+    readingDirty = true;
+
+    updateReadingUI(next);
+    applyReadingSettings(next);
+  }
+
+  function revertPendingReadingSettings() {
+    if (!readingDirty) return;
+    if (!readingBaselineSettings) readingBaselineSettings = getReadingSettings();
+    applyReadingSettings(readingBaselineSettings);
+    readingDirty = false;
   }
 
 	  function updateSyncUI(syncStatus) {
@@ -72,10 +156,9 @@ export function createSettingsModalController(elements) {
       if (elements.fsrsRequestRetentionValue) elements.fsrsRequestRetentionValue.textContent = clamped.toFixed(2);
     }
 
-    const ankiSettings = getAnkiSettings();
-    const isAutoStudy = Boolean(ankiSettings.autoAddToStudy ?? ankiSettings.autoAddToAnki ?? false);
-    elements.autoAnkiToggle.checked = isAutoStudy;
-    if (elements.mobileAutoAnkiToggle) elements.mobileAutoAnkiToggle.checked = isAutoStudy;
+    const isAutoStudy = getAutoStudyEnabled();
+    if (elements.autoStudyToggle) elements.autoStudyToggle.checked = isAutoStudy;
+    if (elements.mobileAutoStudyToggle) elements.mobileAutoStudyToggle.checked = isAutoStudy;
 
     if (settings.model) {
       const existing = Array.from(elements.modelSelect.options).find((opt) => opt.value === settings.model);
@@ -90,6 +173,7 @@ export function createSettingsModalController(elements) {
       }
     }
 
+    loadReadingSettingsToForm();
     updateSyncUI(getSyncStatus());
   }
 
@@ -133,120 +217,41 @@ export function createSettingsModalController(elements) {
   }
 
   function switchSettingsTab(tabName) {
+    const readingRefs = getReadingDomRefs();
     elements.settingsTabAI.classList.toggle('active', tabName === 'ai');
-    elements.settingsTabAnki.classList.toggle('active', tabName === 'anki');
+    readingRefs.tab?.classList.toggle('active', tabName === 'reading');
     elements.settingsTabSync.classList.toggle('active', tabName === 'sync');
     elements.settingsTabFSRS?.classList.toggle('active', tabName === 'fsrs');
 
     elements.aiSettingsContent.classList.toggle('active', tabName === 'ai');
-    elements.ankiSettingsContent.classList.toggle('active', tabName === 'anki');
+    readingRefs.content?.classList.toggle('active', tabName === 'reading');
     elements.syncSettingsContent.classList.toggle('active', tabName === 'sync');
     elements.fsrsSettingsContent?.classList.toggle('active', tabName === 'fsrs');
-  }
-
-  function clearFieldSelects() {
-    const fieldSelects = [
-      elements.fieldWord,
-      elements.fieldContext,
-      elements.fieldMeaning,
-      elements.fieldUsage,
-      elements.fieldContextualMeaning
-    ];
-    fieldSelects.forEach((select) => {
-      select.innerHTML = '<option value="">不映射</option>';
-    });
-  }
-
-  async function loadModelFields(modelName, currentMapping = {}) {
-    try {
-      const fields = await getModelFieldNames(modelName);
-      const fieldSelects = [
-        elements.fieldWord,
-        elements.fieldContext,
-        elements.fieldMeaning,
-        elements.fieldUsage,
-        elements.fieldContextualMeaning
-      ];
-      const mappingKeys = ['word', 'context', 'meaning', 'usage', 'contextualMeaning'];
-
-      fieldSelects.forEach((select, index) => {
-        select.innerHTML = '<option value="">不映射</option>';
-        fields.forEach((field) => {
-          const option = document.createElement('option');
-          option.value = field;
-          option.textContent = field;
-          if (currentMapping[mappingKeys[index]] === field) {
-            option.selected = true;
-          }
-          select.appendChild(option);
-        });
-      });
-    } catch (error) {
-      console.error('Failed to load model fields:', error);
-      showNotification(error.message, 'error');
-    }
-  }
-
-  async function refreshAnkiOptions() {
-    const ankiSettings = getAnkiSettings();
-
-    try {
-      const decks = await getDeckNames();
-      elements.ankiDeckSelect.innerHTML = '<option value="">选择牌组...</option>';
-      decks.forEach((deck) => {
-        const option = document.createElement('option');
-        option.value = deck;
-        option.textContent = deck;
-        if (deck === ankiSettings.deckName) option.selected = true;
-        elements.ankiDeckSelect.appendChild(option);
-      });
-
-      const models = await getModelNames();
-      elements.ankiModelSelect.innerHTML = '<option value="">选择笔记类型...</option>';
-      models.forEach((model) => {
-        const option = document.createElement('option');
-        option.value = model;
-        option.textContent = model;
-        if (model === ankiSettings.modelName) option.selected = true;
-        elements.ankiModelSelect.appendChild(option);
-      });
-
-      if (ankiSettings.modelName) {
-        await loadModelFields(ankiSettings.modelName, ankiSettings.fieldMapping);
-      }
-    } catch (error) {
-      console.error('Failed to refresh Anki options:', error);
-      showNotification(error.message, 'error');
-    }
-  }
-
-  async function handleAnkiModelChange() {
-    const modelName = elements.ankiModelSelect.value;
-    if (modelName) {
-      await loadModelFields(modelName, {});
-    } else {
-      clearFieldSelects();
-    }
   }
 
   function handleAutoStudyToggle(e) {
     const enabled = Boolean(e.target.checked);
     
     // Sync UI
-    if (elements.autoAnkiToggle) elements.autoAnkiToggle.checked = enabled;
-    if (elements.mobileAutoAnkiToggle) elements.mobileAutoAnkiToggle.checked = enabled;
+    if (elements.autoStudyToggle) elements.autoStudyToggle.checked = enabled;
+    if (elements.mobileAutoStudyToggle) elements.mobileAutoStudyToggle.checked = enabled;
 
     setAutoStudyEnabled(enabled);
-
-    const ankiSettings = getAnkiSettings();
-    ankiSettings.autoAddToStudy = enabled;
-    ankiSettings.autoAddToAnki = enabled;
-    saveAnkiSettings(ankiSettings);
+    saveAutoStudyPreference(enabled);
 
     showNotification(enabled ? '自动加入学习已开启' : '自动加入学习已关闭', 'success');
   }
 
   function handleSave() {
+    const readingSettingsToSave = readingPendingSettings || readingFormToSettings();
+    if (!saveReadingSettings(readingSettingsToSave)) {
+      showNotification('保存阅读设置失败', 'error');
+      return;
+    }
+    applyReadingSettings(readingSettingsToSave);
+    readingBaselineSettings = readingSettingsToSave;
+    readingDirty = false;
+
     const settings = {
       apiUrl: elements.apiUrl.value.trim(),
       apiKey: elements.apiKey.value.trim(),
@@ -266,35 +271,31 @@ export function createSettingsModalController(elements) {
     const requestRetention = Number(elements.fsrsRequestRetention?.value);
     saveFsrsSettings({ reviewMode: fsrsReviewMode, requestRetention });
 
-    const autoStudy = getAutoStudyEnabled();
-    const ankiSettings = {
-      deckName: elements.ankiDeckSelect.value,
-      modelName: elements.ankiModelSelect.value,
-      fieldMapping: {
-        word: elements.fieldWord.value,
-        context: elements.fieldContext.value,
-        meaning: elements.fieldMeaning.value,
-        usage: elements.fieldUsage.value,
-        contextualMeaning: elements.fieldContextualMeaning.value
-      },
-      autoAddToStudy: autoStudy,
-      autoAddToAnki: autoStudy
-    };
-    saveAnkiSettings(ankiSettings);
-
     showNotification('设置已保存', 'success');
     close();
     hooks.onAfterSave(settings);
   }
 
   function handleEscape() {
+    revertPendingReadingSettings();
     settingsModalManager.close();
+  }
+
+  function openTab(tabName, getSyncStatus) {
+    loadSettingsToForm(getSyncStatus);
+    switchSettingsTab(tabName);
+    settingsModalManager.open();
   }
 
   function init({ getSyncStatus, onAfterSave, onSyncNow }) {
     setHooks({ onAfterSave });
 
+    const isAutoStudy = getAutoStudyEnabled();
+    if (elements.autoStudyToggle) elements.autoStudyToggle.checked = isAutoStudy;
+    if (elements.mobileAutoStudyToggle) elements.mobileAutoStudyToggle.checked = isAutoStudy;
+
     elements.settingsBtn.addEventListener('click', () => open(getSyncStatus));
+    elements.typographyBtn?.addEventListener('click', () => openTab('reading', getSyncStatus));
     elements.saveSettingsBtn.addEventListener('click', handleSave);
     elements.fetchModelsBtn.addEventListener('click', handleFetchModels);
 
@@ -305,22 +306,30 @@ export function createSettingsModalController(elements) {
     });
 
     elements.settingsTabAI.addEventListener('click', () => switchSettingsTab('ai'));
-    elements.settingsTabAnki.addEventListener('click', () => {
-      switchSettingsTab('anki');
-      void refreshAnkiOptions();
-    });
+    const readingRefs = getReadingDomRefs();
+    readingRefs.tab?.addEventListener('click', () => switchSettingsTab('reading'));
     elements.settingsTabSync.addEventListener('click', () => switchSettingsTab('sync'));
     elements.settingsTabFSRS?.addEventListener('click', () => switchSettingsTab('fsrs'));
 
-    elements.refreshAnkiBtn.addEventListener('click', () => void refreshAnkiOptions());
-    elements.ankiModelSelect.addEventListener('change', handleAnkiModelChange);
+    readingRefs.fontPreset?.addEventListener('change', handleReadingInput);
+    readingRefs.fontSize?.addEventListener('input', handleReadingInput);
+    readingRefs.lineHeight?.addEventListener('input', handleReadingInput);
+
+    // Revert unsaved reading settings when dismissing the modal.
+    elements.closeSettingsBtn?.addEventListener('click', () => revertPendingReadingSettings(), true);
+    elements.cancelSettingsBtn?.addEventListener('click', () => revertPendingReadingSettings(), true);
+    elements.settingsModal?.addEventListener(
+      'click',
+      (event) => {
+        if (event.target === elements.settingsModal) revertPendingReadingSettings();
+      },
+      true
+    );
 
     elements.syncNowBtn.addEventListener('click', onSyncNow);
 
-    elements.autoAnkiToggle.addEventListener('change', handleAutoStudyToggle);
-    if (elements.mobileAutoAnkiToggle) {
-      elements.mobileAutoAnkiToggle.addEventListener('change', handleAutoStudyToggle);
-    }
+    elements.autoStudyToggle?.addEventListener('change', handleAutoStudyToggle);
+    elements.mobileAutoStudyToggle?.addEventListener('change', handleAutoStudyToggle);
 
     elements.fsrsRequestRetention?.addEventListener('input', () => {
       const value = Number(elements.fsrsRequestRetention.value);
@@ -333,6 +342,7 @@ export function createSettingsModalController(elements) {
   return {
     init,
     open,
+    openTab,
     close,
     updateSyncUI,
     handleEscape
