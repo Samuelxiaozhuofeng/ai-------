@@ -162,6 +162,7 @@
   width: 100%;
   height: 100%;
   object-fit: cover;
+  border-radius: inherit;
 }
 
 .book-cover-placeholder {
@@ -175,6 +176,7 @@
   font-size: 3rem;
   font-weight: 700;
   text-transform: uppercase;
+  border-radius: inherit;
 }
 
 .book-card-info {
@@ -245,6 +247,7 @@
   backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
   z-index: 10;
+  pointer-events: auto;
 }
 
 .book-card:hover .book-menu-btn {
@@ -364,6 +367,8 @@
   justify-content: center;
   transition: background 0.2s ease, color 0.2s ease;
   font-size: 18px;
+  flex-shrink: 0;
+  margin-left: auto;
 }
 
 .book-list-menu-btn:hover {

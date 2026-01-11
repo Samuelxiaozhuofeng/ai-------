@@ -231,7 +231,8 @@ export function createBookshelfController(elements) {
 
     /** @type {Map<string, Element>} */
     const existingById = new Map();
-    wrapper.querySelectorAll('[data-book-id]').forEach((el) => {
+    const selector = mode === 'grid' ? '.book-card[data-book-id]' : '.book-list-item[data-book-id]';
+    wrapper.querySelectorAll(selector).forEach((el) => {
       const id = el.dataset.bookId;
       if (id) existingById.set(id, el);
       if (id && !idSet.has(id)) {
