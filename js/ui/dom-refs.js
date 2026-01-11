@@ -26,6 +26,9 @@ export const elements = {
   themeToggleBtnShelf: document.getElementById('themeToggleBtnShelf'),
   themeIconShelf: document.getElementById('themeIconShelf'),
   authBtn: document.getElementById('authBtn'),
+  mobileMenuBtn: document.getElementById('mobileMenuBtn'),
+  mobileHeaderMenu: document.getElementById('mobileHeaderMenu'),
+  mobileAuthMenuItem: document.getElementById('mobileAuthMenuItem'),
 
   // Context Menu
   bookContextMenu: document.getElementById('bookContextMenu'),

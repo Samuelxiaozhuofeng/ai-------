@@ -72,6 +72,18 @@ export function createBookshelfController(elements) {
     return setTimeout(fn, Math.min(250, timeoutMs));
   }
 
+  function isMobileViewport() {
+    if (typeof window === 'undefined') return false;
+    if (typeof window.matchMedia !== 'function') return false;
+    return window.matchMedia('(max-width: 768px)').matches;
+  }
+
+  let groupedReviewState = {
+    entries: [],
+    dueByLanguage: { en: 0, es: 0, ja: 0 },
+    totalDue: 0
+  };
+
   function normalizeRemoteRow(row) {
     return {
       id: row.id,
@@ -478,8 +490,11 @@ export function createBookshelfController(elements) {
     }
 
     const currentLanguageFilter = getLanguageFilter();
+    const isMobile = isMobileViewport();
     const hasAnyBooks = booksLibrary.length > 0;
-    const filteredBooks = booksLibrary.filter((book) => book?.language === currentLanguageFilter);
+    const filteredBooks = isMobile
+      ? booksLibrary
+      : booksLibrary.filter((book) => book?.language === currentLanguageFilter);
     const hasFiltered = filteredBooks.length > 0;
 
     setBookshelfEmptyMessage({ hasAnyBooks });
@@ -515,16 +530,22 @@ export function createBookshelfController(elements) {
   }
 
   async function refreshBookshelfReviewButtons() {
-    if (!elements.reviewButtonsContainer || !elements.reviewBtn) return;
+    if (!elements.reviewBtn) return;
 
     const now = new Date();
     const fsrsSettings = getFsrsSettings();
     const reviewMode = fsrsSettings?.reviewMode === 'mixed' ? 'mixed' : 'grouped';
+    const isMobile = isMobileViewport();
 
     try {
-      if (reviewMode === 'mixed') {
-        const due = await countDueCards(now);
+      if (elements.reviewButtonsContainer) {
         elements.reviewButtonsContainer.innerHTML = '';
+        elements.reviewButtonsContainer.style.display = 'none';
+      }
+
+      // Mobile always uses mixed review entry (all languages) for simplicity.
+      if (isMobile || reviewMode === 'mixed') {
+        const due = await countDueCards(now);
         elements.reviewBtn.style.display = '';
         elements.reviewBtn.disabled = due === 0;
         elements.reviewBtn.innerHTML = `<span class="icon">🗓️</span> 复习 (${due})`;
@@ -544,49 +565,34 @@ export function createBookshelfController(elements) {
         countDueCardsByLanguage(now, 'ja')
       ]);
 
+      const dueByLanguage = { en: dueEn, es: dueEs, ja: dueJa };
       const entries = [
         { lang: 'en', due: dueEn },
         { lang: 'es', due: dueEs },
         { lang: 'ja', due: dueJa }
       ].filter((it) => (it?.due || 0) > 0);
 
-      elements.reviewBtn.style.display = 'none';
-
       const totalDue = entries.reduce((acc, curr) => acc + curr.due, 0);
       const currentLanguage = getLanguageFilter();
       const currentLanguageDue = entries.find((it) => it.lang === currentLanguage)?.due || 0;
 
-      if (elements.mobileReviewBtn) {
-        elements.mobileReviewBtn.disabled = totalDue === 0;
-        if (elements.mobileReviewBadge) {
-          elements.mobileReviewBadge.textContent = currentLanguageDue > 0 ? currentLanguageDue.toString() : '';
-        }
-      }
+      groupedReviewState = { entries, dueByLanguage, totalDue };
 
       if (entries.length === 0) {
-        elements.reviewButtonsContainer.innerHTML = '';
         elements.reviewBtn.style.display = '';
         elements.reviewBtn.disabled = true;
         elements.reviewBtn.innerHTML = `<span class="icon">🗓️</span> 复习`;
         return;
       }
 
-      elements.reviewButtonsContainer.innerHTML = entries
-        .map(
-          ({ lang, due }) => `
-            <button class="btn btn-secondary" data-action="review-language" data-language="${lang}">
-                <span class="icon">🗓️</span> 复习${escapeHtml(SUPPORTED_LANGUAGES[lang] || lang)} (${due})
-            </button>
-        `
-        )
-        .join('');
-
-      elements.reviewButtonsContainer.querySelectorAll('button[data-action="review-language"]').forEach((btn) => {
-        btn.addEventListener('click', () => {
-          const lang = btn.dataset.language || null;
-          navigation.openReview(lang);
-        });
-      });
+      elements.reviewBtn.style.display = '';
+      elements.reviewBtn.disabled = totalDue === 0;
+      if (currentLanguageDue > 0) {
+        elements.reviewBtn.innerHTML = `<span class="icon">🗓️</span> 复习${escapeHtml(SUPPORTED_LANGUAGES[currentLanguage] || currentLanguage)} (${currentLanguageDue})`;
+      } else {
+        elements.reviewBtn.innerHTML = `<span class="icon">🗓️</span> 复习 (总${totalDue})`;
+      }
+      elements.reviewBtn.title = '复习模式：按语言分组（切换语言标签可复习对应语言）';
     } catch (error) {
       console.warn('Failed to refresh review buttons:', error);
     }
@@ -618,6 +624,33 @@ export function createBookshelfController(elements) {
 
   function hideContextMenu() {
     elements.bookContextMenu.classList.remove('visible');
+  }
+
+  function hideHeaderMenu() {
+    elements.mobileHeaderMenu?.classList.remove('visible');
+  }
+
+  function toggleHeaderMenu() {
+    if (!elements.mobileHeaderMenu || !elements.mobileMenuBtn) return;
+    const menu = elements.mobileHeaderMenu;
+    const isVisible = menu.classList.contains('visible');
+    if (isVisible) {
+      menu.classList.remove('visible');
+      return;
+    }
+
+    const btnRect = elements.mobileMenuBtn.getBoundingClientRect();
+    menu.style.left = `${Math.max(8, btnRect.right - 180)}px`;
+    menu.style.top = `${btnRect.bottom + 8}px`;
+    menu.classList.add('visible');
+
+    const rect = menu.getBoundingClientRect();
+    if (rect.right > window.innerWidth) {
+      menu.style.left = `${Math.max(8, window.innerWidth - rect.width - 8)}px`;
+    }
+    if (rect.bottom > window.innerHeight) {
+      menu.style.top = `${Math.max(8, window.innerHeight - rect.height - 8)}px`;
+    }
   }
 
   function handleBookshelfBooksClick(event) {
@@ -805,6 +838,7 @@ export function createBookshelfController(elements) {
     deleteModalManager.close();
     languageSelectChoice.close(null);
     hideContextMenu();
+    hideHeaderMenu();
   }
 
   function init({ onOpenBook, onOpenReview, onOpenVocabLibrary, onToggleTheme }) {
@@ -831,13 +865,21 @@ export function createBookshelfController(elements) {
     });
 
     elements.themeToggleBtnShelf?.addEventListener('click', onToggleTheme);
-    elements.reviewBtn?.addEventListener('click', () => navigation.openReview(null));
-    elements.mobileReviewBtn?.addEventListener('click', () => {
+    elements.reviewBtn?.addEventListener('click', () => {
       const fsrsSettings = getFsrsSettings();
       const reviewMode = fsrsSettings?.reviewMode === 'mixed' ? 'mixed' : 'grouped';
-      const language = reviewMode === 'grouped' ? getLanguageFilter() : null;
+      if (reviewMode === 'mixed') {
+        navigation.openReview(null);
+        return;
+      }
+
+      const currentLanguage = getLanguageFilter();
+      const currentDue = groupedReviewState?.dueByLanguage?.[currentLanguage] || 0;
+      const fallbackLanguage = groupedReviewState?.entries?.[0]?.lang || currentLanguage;
+      const language = currentDue > 0 ? currentLanguage : fallbackLanguage;
       navigation.openReview(language);
     });
+    elements.mobileReviewBtn?.addEventListener('click', () => navigation.openReview(null));
 
     elements.vocabLibraryBtn?.addEventListener('click', onOpenVocabLibrary);
 
@@ -846,7 +888,35 @@ export function createBookshelfController(elements) {
     elements.confirmRenameBtn.addEventListener('click', handleRenameBook);
     elements.confirmDeleteBtn.addEventListener('click', handleDeleteBook);
 
-    document.addEventListener('click', hideContextMenu);
+    document.addEventListener('click', () => {
+      hideContextMenu();
+      hideHeaderMenu();
+    });
+
+    elements.mobileMenuBtn?.addEventListener('click', (event) => {
+      event.stopPropagation();
+      toggleHeaderMenu();
+    });
+
+    elements.mobileHeaderMenu?.addEventListener('click', (event) => {
+      event.stopPropagation();
+      const target = event.target?.closest?.('button[data-action]');
+      const action = target?.dataset?.action || '';
+      if (!action) return;
+      hideHeaderMenu();
+
+      if (action === 'import') {
+        elements.fileInput?.click?.();
+        return;
+      }
+      if (action === 'settings') {
+        elements.settingsBtn?.click?.();
+        return;
+      }
+      if (action === 'auth') {
+        elements.authBtn?.click?.();
+      }
+    });
 
     elements.languageSelectModal?.addEventListener('click', (e) => {
       if (e.target === elements.languageSelectModal) languageSelectChoice.close(null);

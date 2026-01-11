@@ -13,9 +13,9 @@ function readPassword(value) {
 
 function formatUserLabel(user) {
   const email = user?.email || '';
-  if (!email) return '👤 已登录';
-  if (email.length <= 18) return `👤 ${email}`;
-  return `👤 ${email.slice(0, 10)}…${email.slice(-6)}`;
+  if (!email) return '已登录';
+  if (email.length <= 18) return email;
+  return `${email.slice(0, 10)}…${email.slice(-6)}`;
 }
 
 /**
@@ -56,7 +56,25 @@ export function createAuthModalController(elements) {
 
   function updateAuthButton() {
     if (!elements.authBtn) return;
-    elements.authBtn.textContent = currentUser ? formatUserLabel(currentUser) : '🔐 登录';
+    const icon = currentUser ? '👤' : '🔐';
+    const label = currentUser ? formatUserLabel(currentUser) : '登录';
+
+    const iconEl = elements.authBtn.querySelector?.('.auth-icon') || null;
+    const labelEl = elements.authBtn.querySelector?.('.auth-label') || null;
+    if (iconEl && labelEl) {
+      iconEl.textContent = icon;
+      labelEl.textContent = label;
+    } else {
+      elements.authBtn.textContent = currentUser ? `${icon} ${label}` : `${icon} 登录`;
+    }
+
+    if (elements.mobileAuthMenuItem) {
+      const menuIconEl = elements.mobileAuthMenuItem.querySelector?.('.icon') || null;
+      const menuLabelEl = elements.mobileAuthMenuItem.querySelector?.('.menu-label') || null;
+      if (menuIconEl) menuIconEl.textContent = icon;
+      elements.mobileAuthMenuItem.title = currentUser ? `已登录：${label}` : '登录 / 注册';
+      if (menuLabelEl) menuLabelEl.textContent = currentUser ? label : '登录 / 账户';
+    }
   }
 
   function renderConfigHint() {
@@ -199,4 +217,3 @@ export function createAuthModalController(elements) {
     getCurrentUser: () => currentUser
   };
 }
-

@@ -5,6 +5,10 @@
   display: none;
 }
 
+#mobileMenuBtn {
+  display: none;
+}
+
 @media (max-width: 768px) {
   .vocab-panel {
     display: none;
@@ -204,6 +208,26 @@
   /* Hide Desktop Review Button */
   #reviewBtn {
     display: none !important;
+  }
+
+  #reviewButtonsContainer {
+    display: none !important;
+  }
+
+  #importBookBtn {
+    display: none !important;
+  }
+
+  #settingsBtn {
+    display: none !important;
+  }
+
+  #authBtn {
+    display: none !important;
+  }
+
+  #mobileMenuBtn {
+    display: inline-flex;
   }
   
   /* FAB Review Button */

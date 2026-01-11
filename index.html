@@ -16,17 +16,17 @@
 <body>
   <div class="app-container">
     <!-- Bookshelf View (Default) -->
-    <section class="bookshelf-view" id="bookshelfView">
-      <header class="bookshelf-header">
-        <div class="header-left">
-          <h1 class="logo"><span class="icon">📚</span> <span class="mobile-hide">我的书架</span></h1>
-          <div class="language-tabs" id="languageTabs">
-            <button class="language-tab active" data-language="en" id="languageTabEn">英语</button>
-            <button class="language-tab" data-language="es" id="languageTabEs">西班牙语</button>
-            <button class="language-tab" data-language="ja" id="languageTabJa">日语</button>
-          </div>
-        </div>
-        <div class="header-right">
+	    <section class="bookshelf-view" id="bookshelfView">
+	      <header class="bookshelf-header">
+	        <div class="header-left">
+	          <h1 class="logo"><span class="icon">📚</span> <span class="mobile-hide">我的书架</span></h1>
+	          <div class="language-tabs" id="languageTabs">
+	            <button class="language-tab active" data-language="en" id="languageTabEn">英语</button>
+	            <button class="language-tab" data-language="es" id="languageTabEs">西班牙语</button>
+	            <button class="language-tab" data-language="ja" id="languageTabJa">日语</button>
+	          </div>
+	        </div>
+	        <div class="header-right">
           <div class="view-toggle">
             <button class="btn btn-ghost view-btn active" id="gridViewBtn" title="网格视图">
               <span class="icon">▦</span>
@@ -42,20 +42,40 @@
           <button class="btn btn-secondary" id="reviewBtn" title="开始复习">
             <span class="icon">🗓️</span> 复习
           </button>
-          <div class="sync-indicator" id="syncIndicatorShelf" title="Sync status">
-            <span class="sync-dot"></span> <span class="sync-label mobile-hide">Offline</span>
-          </div>
-          <button class="btn btn-secondary" id="authBtn" title="登录 / 注册">
-            🔐 登录
-          </button>
-          <button class="btn btn-ghost" id="themeToggleBtnShelf" title="Toggle theme">
-            <span class="icon" id="themeIconShelf">🌙</span>
-          </button>
-          <button class="btn btn-primary" id="importBookBtn">
-            <span class="icon">📁</span> 上传 EPUB
-          </button>
-        </div>
-      </header>
+	          <div class="sync-indicator" id="syncIndicatorShelf" title="Sync status">
+	            <span class="sync-dot"></span> <span class="sync-label mobile-hide">Offline</span>
+	          </div>
+	          <button class="btn btn-secondary" id="authBtn" title="登录 / 注册">
+	            <span class="auth-icon">🔐</span>
+	            <span class="auth-label">登录</span>
+	          </button>
+	          <button class="btn btn-ghost" id="settingsBtn" title="设置" aria-label="设置">
+	            <span class="icon">⚙️</span>
+	          </button>
+	          <button class="btn btn-ghost" id="themeToggleBtnShelf" title="Toggle theme">
+	            <span class="icon" id="themeIconShelf">🌙</span>
+	          </button>
+	          <button class="btn btn-ghost" id="mobileMenuBtn" title="菜单" aria-label="菜单">
+	            <span class="icon">☰</span>
+	          </button>
+	          <button class="btn btn-primary" id="importBookBtn">
+	            <span class="icon">📁</span> 上传 EPUB
+	          </button>
+	        </div>
+	      </header>
+
+	      <!-- Mobile header dropdown menu -->
+	      <div class="context-menu" id="mobileHeaderMenu" role="menu" aria-label="菜单">
+	        <button class="context-menu-item" data-action="import">
+	          <span class="icon">📁</span> <span class="menu-label">上传 EPUB</span>
+	        </button>
+	        <button class="context-menu-item" data-action="settings">
+	          <span class="icon">⚙️</span> <span class="menu-label">设置</span>
+	        </button>
+	        <button class="context-menu-item" data-action="auth" id="mobileAuthMenuItem">
+	          <span class="icon">🔐</span> <span class="menu-label">登录 / 账户</span>
+	        </button>
+	      </div>
 
       <div class="bookshelf-content">
         <div class="books-container" id="booksContainer">
@@ -79,7 +99,7 @@
     </section>
 
     <!-- Reader View (Hidden by default) -->
-    <section class="reader-view" id="readerView" style="display: none;">
+	    <section class="reader-view" id="readerView" style="display: none;">
       <!-- Header -->
       <header class="app-header">
         <div class="header-left">
@@ -91,18 +111,15 @@
           </button>
           <span class="book-title" id="bookTitle">No book loaded</span>
         </div>
-        <div class="header-right">
-          <div class="sync-indicator" id="syncIndicator" title="Sync status">
-            <span class="sync-dot"></span> <span class="sync-label mobile-hide">Offline</span>
-          </div>
-          <button class="btn btn-ghost" id="themeToggleBtn" title="Toggle theme">
-            <span class="icon" id="themeIcon">🌙</span>
-          </button>
-          <button class="btn btn-ghost" id="settingsBtn">
-            <span class="icon">⚙️</span>
-          </button>
-        </div>
-      </header>
+	        <div class="header-right">
+	          <div class="sync-indicator" id="syncIndicator" title="Sync status">
+	            <span class="sync-dot"></span> <span class="sync-label mobile-hide">Offline</span>
+	          </div>
+	          <button class="btn btn-ghost" id="themeToggleBtn" title="Toggle theme">
+	            <span class="icon" id="themeIcon">🌙</span>
+	          </button>
+	        </div>
+	      </header>
 
       <!-- Main Content -->
       <main class="main-content">
