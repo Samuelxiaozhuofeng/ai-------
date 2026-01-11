@@ -229,24 +229,34 @@
   width: 32px;
   height: 32px;
   border-radius: 50%;
-  background: rgba(0, 0, 0, 0.6);
+  background: rgba(0, 0, 0, 0.7);
   color: white;
   border: none;
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
-  opacity: 0;
-  transition: opacity 0.2s ease;
+  opacity: 0.8;
+  transition: all 0.2s ease;
   font-size: 16px;
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
 }
 
 .book-card:hover .book-menu-btn {
   opacity: 1;
+  transform: scale(1.05);
 }
 
 .book-menu-btn:hover {
-  background: rgba(0, 0, 0, 0.8);
+  background: rgba(0, 0, 0, 0.9);
+}
+
+/* 移动端始终显示菜单按钮 */
+@media (max-width: 768px) {
+  .book-menu-btn {
+    opacity: 1;
+  }
 }
 
 /* Books List View */

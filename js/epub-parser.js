@@ -277,6 +277,22 @@ function splitContentByHeadings(body, baseId) {
 
     const chapters = [];
 
+    // Get all nodes in document order for proper traversal
+    const allNodes = Array.from(body.querySelectorAll('*'));
+
+    // Create a map of node -> index for O(1) lookups (performance optimization)
+    const nodeIndexMap = new Map();
+    allNodes.forEach((node, index) => {
+        nodeIndexMap.set(node, index);
+    });
+
+    // Create a map of heading positions
+    const headingPositions = new Map();
+    chapterHeadings.forEach((heading) => {
+        const position = nodeIndexMap.get(heading);
+        headingPositions.set(heading, position);
+    });
+
     // Split content based on chapter headings
     for (let i = 0; i < chapterHeadings.length; i++) {
         const currentHeading = chapterHeadings[i];
@@ -286,23 +302,82 @@ function splitContentByHeadings(body, baseId) {
         const contentParts = [];
         const rawHtmlParts = [];
 
-        // Collect all elements between this heading and the next
-        let current = currentHeading.nextElementSibling;
-        while (current && current !== nextHeading) {
-            // Skip if we've reached another chapter heading
-            if (chapterHeadings.includes(current)) {
+        const currentPosition = headingPositions.get(currentHeading);
+        const nextPosition = nextHeading ? headingPositions.get(nextHeading) : allNodes.length;
+
+        // Track which elements we've already added to avoid duplication
+        const addedElements = new Set();
+
+        // Collect all elements between this heading and the next heading (in document order)
+        for (let pos = currentPosition + 1; pos < nextPosition; pos++) {
+            const element = allNodes[pos];
+
+            // Skip if this element is a chapter heading itself
+            if (chapterHeadings.includes(element)) {
                 break;
             }
 
-            const text = current.textContent?.trim();
-            if (text) {
-                contentParts.push(text);
+            // Skip if this element is inside the current heading (e.g., span/a inside h2)
+            if (currentHeading.contains(element)) {
+                continue;
             }
-            rawHtmlParts.push(current.outerHTML || '');
 
-            current = current.nextElementSibling;
+            // Skip if this element is inside another chapter heading
+            let isInsideHeading = false;
+            for (const heading of chapterHeadings) {
+                if (heading !== currentHeading && heading.contains(element)) {
+                    isInsideHeading = true;
+                    break;
+                }
+            }
+            if (isInsideHeading) {
+                continue;
+            }
+
+            // Skip if this element is a descendant of an already-added element
+            // (to avoid duplicating content from parent and child elements)
+            let isChildOfProcessed = false;
+            for (const added of addedElements) {
+                if (added.contains(element)) {
+                    isChildOfProcessed = true;
+                    break;
+                }
+            }
+            if (isChildOfProcessed) {
+                continue;
+            }
+
+            // Determine if this is a content element we should include
+            // Support more element types: P, DIV, BLOCKQUOTE, UL, OL, PRE, TABLE, FIGURE, IMG, HR
+            const isContentElement = (
+                element.tagName === 'P' ||
+                element.tagName === 'DIV' ||
+                element.tagName === 'BLOCKQUOTE' ||
+                element.tagName === 'UL' ||
+                element.tagName === 'OL' ||
+                element.tagName === 'PRE' ||
+                element.tagName === 'TABLE' ||
+                element.tagName === 'FIGURE' ||
+                element.tagName === 'IMG' ||
+                element.tagName === 'HR' ||
+                element.tagName === 'SECTION' ||
+                element.tagName === 'ARTICLE'
+            );
+
+            if (isContentElement) {
+                const text = element.textContent?.trim();
+                if (text || element.tagName === 'IMG' || element.tagName === 'HR') {
+                    if (text) {
+                        contentParts.push(text);
+                    }
+                    rawHtmlParts.push(element.outerHTML || '');
+                    addedElements.add(element);
+                }
+            }
         }
 
+        // Always include the chapter, even if empty (to maintain chapter numbering)
+        // Empty chapters will just have the title
         chapters.push({
             index: i,
             title: title,
