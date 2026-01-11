@@ -223,5 +223,12 @@ export const elements = {
   mobileVocabPeekPillMain: document.getElementById('mobileVocabPeekPillMain'),
   mobileVocabPeekPillLabel: document.getElementById('mobileVocabPeekPillLabel'),
   mobileVocabPeekPillWord: document.getElementById('mobileVocabPeekPillWord'),
-  mobileVocabPeekPillClose: document.getElementById('mobileVocabPeekPillClose')
+  mobileVocabPeekPillClose: document.getElementById('mobileVocabPeekPillClose'),
+
+  // Mobile Chapter Analysis Bottom Sheet
+  mobileChapterOverlay: document.getElementById('mobileChapterOverlay'),
+  mobileChapterSheet: document.getElementById('mobileChapterSheet'),
+  mobileChapterContent: document.getElementById('mobileChapterContent'),
+  mobileChapterAnalysisRefreshBtn: document.getElementById('mobileChapterAnalysisRefreshBtn'),
+  mobileChapterAnalysisCloseBtn: document.getElementById('mobileChapterAnalysisCloseBtn')
 };

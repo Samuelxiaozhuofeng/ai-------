@@ -238,6 +238,23 @@
       </div>
     </div>
 
+    <!-- Mobile Chapter Analysis Bottom Sheet -->
+    <div class="mobile-chapter-overlay" id="mobileChapterOverlay" aria-hidden="true">
+      <div class="mobile-chapter-sheet" id="mobileChapterSheet" role="dialog" aria-modal="true" aria-label="Chapter Analysis">
+        <div class="sheet-handle"></div>
+        <div class="mobile-sheet-header">
+          <span class="sheet-title">章节分析</span>
+          <div class="sheet-actions">
+            <button class="btn btn-ghost btn-small" id="mobileChapterAnalysisRefreshBtn" type="button" title="重新分析" aria-label="重新分析">⟳</button>
+            <button class="btn btn-ghost btn-small" id="mobileChapterAnalysisCloseBtn" type="button" title="关闭" aria-label="关闭">✕</button>
+          </div>
+        </div>
+        <div class="sheet-content markdown-body" id="mobileChapterContent">
+          <p class="empty-state">点击 “Chapter Analysis” 获取章节概览</p>
+        </div>
+      </div>
+    </div>
+
     <!-- Review View (Hidden by default) -->
     <section class="review-view" id="reviewView" style="display: none;">
       <header class="app-header">

@@ -643,6 +643,41 @@
   font-size: var(--font-size-sm);
 }
 
+.loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  color: var(--text-secondary);
+  text-align: center;
+  padding: var(--spacing-lg);
+  font-size: var(--font-size-sm);
+}
+
+.loading::before {
+  content: "";
+  width: 14px;
+  height: 14px;
+  border-radius: 999px;
+  border: 2px solid var(--border-default);
+  border-top-color: var(--accent-primary);
+  animation: loading-spinner 0.9s linear infinite;
+  flex-shrink: 0;
+}
+
+@keyframes loading-spinner {
+  to { transform: rotate(360deg); }
+}
+
+.text-error {
+  color: var(--accent-error);
+}
+
+.analysis-retry-row {
+  text-align: center;
+  padding: var(--spacing-md);
+}
+
 /* Modal */
 .modal-overlay {
   position: fixed;

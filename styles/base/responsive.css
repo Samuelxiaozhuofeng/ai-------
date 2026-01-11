@@ -9,6 +9,11 @@
   display: none;
 }
 
+.mobile-vocab-overlay,
+.mobile-chapter-overlay {
+  display: none;
+}
+
 @media (max-width: 768px) {
   .vocab-panel {
     display: none;
@@ -95,7 +100,8 @@
   }
 
   /* Bottom Sheet Styles */
-  .mobile-vocab-overlay {
+  .mobile-vocab-overlay,
+  .mobile-chapter-overlay {
     position: fixed;
     inset: 0;
     background: rgba(0, 0, 0, 0.4);
@@ -106,12 +112,14 @@
     backdrop-filter: blur(2px);
   }
 
-  .mobile-vocab-overlay.active {
+  .mobile-vocab-overlay.active,
+  .mobile-chapter-overlay.active {
     display: block;
     opacity: 1;
   }
 
-  .mobile-vocab-sheet {
+  .mobile-vocab-sheet,
+  .mobile-chapter-sheet {
     position: absolute;
     left: 0;
     right: 0;
@@ -127,7 +135,8 @@
     box-shadow: 0 -10px 25px rgba(0, 0, 0, 0.1);
   }
 
-  .mobile-vocab-overlay.active .mobile-vocab-sheet {
+  .mobile-vocab-overlay.active .mobile-vocab-sheet,
+  .mobile-chapter-overlay.active .mobile-chapter-sheet {
     transform: translateY(0);
   }
 
@@ -159,6 +168,12 @@
   .sheet-title {
     font-weight: 600;
     color: var(--text-primary);
+  }
+
+  .sheet-actions {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
   }
 
   /* Mobile Vocab Peek Pill */
