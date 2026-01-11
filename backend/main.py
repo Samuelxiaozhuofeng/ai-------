@@ -66,6 +66,8 @@ class ProgressUpsert(BaseModel):
     chapter_id: Optional[str] = Field(default=None, alias="chapterId")
     page_number: int = Field(default=0, alias="pageNumber")
     scroll_position: int = Field(default=0, alias="scrollPosition")
+    char_offset: int = Field(default=0, alias="charOffset")
+    chapter_text_hash: Optional[str] = Field(default=None, alias="chapterTextHash")
     updated_at: Optional[str] = Field(default=None, alias="updatedAt")
 
     class Config:
@@ -236,6 +238,8 @@ def get_progress(book_id: str):
         "chapterId": row["chapter_id"],
         "pageNumber": row["page_number"],
         "scrollPosition": row["scroll_position"],
+        "charOffset": row["char_offset"],
+        "chapterTextHash": row["chapter_text_hash"],
         "updatedAt": row["updated_at"],
     }
 
@@ -246,15 +250,25 @@ def put_progress(book_id: str, payload: ProgressUpsert):
     with db_conn() as conn:
         conn.execute(
             """
-            INSERT INTO progress (book_id, chapter_id, page_number, scroll_position, updated_at)
-            VALUES (?, ?, ?, ?, ?)
+            INSERT INTO progress (book_id, chapter_id, page_number, scroll_position, char_offset, chapter_text_hash, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(book_id) DO UPDATE SET
               chapter_id = excluded.chapter_id,
               page_number = excluded.page_number,
               scroll_position = excluded.scroll_position,
+              char_offset = excluded.char_offset,
+              chapter_text_hash = excluded.chapter_text_hash,
               updated_at = excluded.updated_at
             """,
-            (book_id, payload.chapter_id, payload.page_number, payload.scroll_position, updated_at),
+            (
+                book_id,
+                payload.chapter_id,
+                payload.page_number,
+                payload.scroll_position,
+                payload.char_offset,
+                payload.chapter_text_hash,
+                updated_at,
+            ),
         )
         conn.commit()
     return {"ok": True, "updatedAt": updated_at}
@@ -347,4 +361,3 @@ def sync(payload: SyncRequest):
     ]
 
     return {"vocabulary": vocab_out, "syncedAt": now_iso()}
-

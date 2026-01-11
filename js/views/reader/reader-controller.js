@@ -24,7 +24,9 @@ export function createReaderController(elements) {
     currentChapterIndex: 0,
     isPageFlipMode: true,
     chapterPages: [],
+    pageStartCharOffsets: [],
     currentPageIndex: 0,
+    chapterTextHash: null,
     vocabularyByWord: new Map(),
     vocabFilter: WORD_STATUSES.LEARNING,
     selectedWordEl: null,
@@ -220,6 +222,8 @@ export function createReaderController(elements) {
       const pageProgress = await getReadingProgressCloud(bookId);
       const progressChapterId = pageProgress?.chapterId || null;
       const progressPageNumber = typeof pageProgress?.pageNumber === 'number' ? pageProgress.pageNumber : 0;
+      const progressCharOffset = typeof pageProgress?.charOffset === 'number' ? pageProgress.charOffset : 0;
+      const progressChapterTextHash = typeof pageProgress?.chapterTextHash === 'string' ? pageProgress.chapterTextHash : null;
       if (progressChapterId && Array.isArray(book.chapters)) {
         const idx = book.chapters.findIndex((ch) => ch.id === progressChapterId);
         if (idx >= 0) state.currentChapterIndex = idx;
@@ -234,7 +238,11 @@ export function createReaderController(elements) {
       await refreshGlobalVocabCache();
       await vocabPanel.refreshVocabularyCache();
 
-      await chapters.loadChapter(state.currentChapterIndex, { startPage: progressPageNumber });
+      await chapters.loadChapter(state.currentChapterIndex, {
+        startPage: progressPageNumber,
+        startCharOffset: progressCharOffset,
+        chapterTextHash: progressChapterTextHash
+      });
 
       hideLoading();
       return { ok: true, bookId: state.currentBookId };

@@ -8,6 +8,8 @@ function mapLocalToRow(userId, bookId, progress) {
     chapter_id: progress?.chapterId ?? null,
     page_number: typeof progress?.pageNumber === 'number' ? progress.pageNumber : 0,
     scroll_position: typeof progress?.scrollPosition === 'number' ? progress.scrollPosition : 0,
+    char_offset: typeof progress?.charOffset === 'number' ? progress.charOffset : 0,
+    chapter_text_hash: typeof progress?.chapterTextHash === 'string' ? progress.chapterTextHash : null,
     updated_at: typeof progress?.updatedAt === 'string' && progress.updatedAt ? progress.updatedAt : new Date().toISOString()
   };
 }
@@ -18,6 +20,8 @@ function mapRowToLocal(row) {
     chapterId: row.chapter_id ?? null,
     pageNumber: typeof row.page_number === 'number' ? row.page_number : Number(row.page_number || 0),
     scrollPosition: typeof row.scroll_position === 'number' ? row.scroll_position : Number(row.scroll_position || 0),
+    charOffset: typeof row.char_offset === 'number' ? row.char_offset : Number(row.char_offset || 0),
+    chapterTextHash: typeof row.chapter_text_hash === 'string' ? row.chapter_text_hash : null,
     updatedAt: row.updated_at || new Date().toISOString()
   };
 }

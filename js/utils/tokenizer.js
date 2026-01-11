@@ -13,6 +13,16 @@ export function getWordRegex() {
   return WORD_REGEX;
 }
 
+export function normalizeNewlines(value) {
+  return String(value || '').replace(/\r\n?/g, '\n');
+}
+
+export function splitChapterIntoParagraphs(text) {
+  return normalizeNewlines(text)
+    .split(/\n\n+/)
+    .filter((paragraph) => paragraph.trim());
+}
+
 export function tokenizeParagraphInto(paragraphEl, paragraphText) {
   const regex = getWordRegex();
   regex.lastIndex = 0;
@@ -46,11 +56,9 @@ export function tokenizeParagraphInto(paragraphEl, paragraphText) {
   }
 }
 
-export function buildTokenizedChapterWrapper(text) {
+export function buildTokenizedChapterWrapperWithMeta(text) {
   const wrapper = document.createElement('div');
-  const paragraphs = (text || '')
-    .split(/\n\n+/)
-    .filter((paragraph) => paragraph.trim());
+  const paragraphs = splitChapterIntoParagraphs(text || '');
 
   paragraphs.forEach((paragraphText) => {
     const paragraphEl = document.createElement('p');
@@ -68,7 +76,11 @@ export function buildTokenizedChapterWrapper(text) {
         `;
   }
 
-  return wrapper;
+  return { wrapper, canonicalText: paragraphs.join('\n\n') };
+}
+
+export function buildTokenizedChapterWrapper(text) {
+  return buildTokenizedChapterWrapperWithMeta(text).wrapper;
 }
 
 export function renderTokenizedChapterContent(container, text) {
@@ -98,4 +110,3 @@ export function normalizeTextToKey(rawText) {
 
   return normalizeWord(collapsed);
 }
-

@@ -894,7 +894,7 @@ export async function getReadingProgress(bookId) {
 /**
  * Update reading progress for a book (chapter + page).
  * @param {string} bookId
- * @param {{chapterId?: string|null, pageNumber?: number, scrollPosition?: number}} progress
+ * @param {{chapterId?: string|null, pageNumber?: number, scrollPosition?: number, charOffset?: number, chapterTextHash?: string|null}} progress
  * @returns {Promise<boolean>}
  */
 export async function updatePageProgress(bookId, progress) {
@@ -912,6 +912,8 @@ export async function updatePageProgress(bookId, progress) {
             chapterId: progress?.chapterId ?? null,
             pageNumber: typeof progress?.pageNumber === 'number' ? progress.pageNumber : 0,
             scrollPosition: typeof progress?.scrollPosition === 'number' ? progress.scrollPosition : 0,
+            charOffset: typeof progress?.charOffset === 'number' ? progress.charOffset : 0,
+            chapterTextHash: typeof progress?.chapterTextHash === 'string' ? progress.chapterTextHash : null,
             updatedAt
         });
         request.onsuccess = () => resolve(true);

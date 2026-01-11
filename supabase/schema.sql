@@ -43,6 +43,8 @@ create table if not exists public.progress (
   chapter_id text null,
   page_number integer not null default 0,
   scroll_position integer not null default 0,
+  char_offset integer not null default 0,
+  chapter_text_hash text null,
 
   updated_at timestamptz not null default now(),
 
@@ -203,4 +205,3 @@ using (
   bucket_id = 'epubs'
   and auth.uid()::text = (storage.foldername(name))[1]
 );
-

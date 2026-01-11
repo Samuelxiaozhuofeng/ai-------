@@ -51,10 +51,18 @@ def init_db() -> None:
               chapter_id TEXT,
               page_number INTEGER NOT NULL,
               scroll_position INTEGER NOT NULL,
+              char_offset INTEGER NOT NULL DEFAULT 0,
+              chapter_text_hash TEXT,
               updated_at TEXT NOT NULL
             )
             """
         )
         conn.execute("CREATE INDEX IF NOT EXISTS idx_progress_updated_at ON progress(updated_at)")
-        conn.commit()
 
+        # Lightweight migrations for existing sqlite DBs
+        cols = {row["name"] for row in conn.execute("PRAGMA table_info(progress)").fetchall()}
+        if "char_offset" not in cols:
+            conn.execute("ALTER TABLE progress ADD COLUMN char_offset INTEGER NOT NULL DEFAULT 0")
+        if "chapter_text_hash" not in cols:
+            conn.execute("ALTER TABLE progress ADD COLUMN chapter_text_hash TEXT")
+        conn.commit()
