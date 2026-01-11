@@ -161,6 +161,101 @@
     color: var(--text-primary);
   }
 
+  /* Mobile Vocab Peek Pill */
+  .vocab-peek-pill {
+    position: fixed;
+    left: var(--spacing-md);
+    right: var(--spacing-md);
+    bottom: calc(var(--spacing-md) + env(safe-area-inset-bottom));
+    z-index: 1500;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 10px 10px 12px;
+    border-radius: 999px;
+    border: 1px solid var(--border-default);
+    background: var(--bg-secondary);
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.16);
+    backdrop-filter: blur(8px);
+  }
+
+  .vocab-peek-pill.active {
+    display: flex;
+  }
+
+  .vocab-peek-pill-main {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: inherit;
+    text-align: left;
+  }
+
+  .vocab-peek-pill-indicator {
+    width: 10px;
+    height: 10px;
+    border-radius: 999px;
+    background: var(--border-default);
+    flex-shrink: 0;
+  }
+
+  .vocab-peek-pill-text {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    gap: 2px;
+  }
+
+  .vocab-peek-pill-label {
+    font-size: var(--font-size-xs);
+    color: var(--text-secondary);
+  }
+
+  .vocab-peek-pill-word {
+    font-size: var(--font-size-sm);
+    font-weight: 600;
+    color: var(--text-primary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .vocab-peek-pill-close {
+    width: 32px;
+    height: 32px;
+    border-radius: 999px;
+    border: 0;
+    background: transparent;
+    color: var(--text-secondary);
+  }
+
+  .vocab-peek-pill-close:active {
+    background: rgba(0, 0, 0, 0.06);
+  }
+
+  .vocab-peek-pill.is-analyzing .vocab-peek-pill-indicator {
+    background: var(--accent-primary);
+    animation: vocab-peek-pill-pulse 1s ease-in-out infinite;
+  }
+
+  .vocab-peek-pill.is-ready .vocab-peek-pill-indicator {
+    background: var(--accent-primary);
+  }
+
+  .vocab-peek-pill.is-error .vocab-peek-pill-indicator {
+    background: #ff3b30;
+  }
+
+  @keyframes vocab-peek-pill-pulse {
+    0% { transform: scale(1); opacity: 0.55; }
+    50% { transform: scale(1.6); opacity: 1; }
+    100% { transform: scale(1); opacity: 0.55; }
+  }
+
   /* Adjust card styles within mobile sheet */
   .mobile-vocab-sheet .vocab-selected-header {
     flex-direction: column;

@@ -218,5 +218,10 @@ export const elements = {
   // Mobile Vocab Bottom Sheet
   mobileVocabOverlay: document.getElementById('mobileVocabOverlay'),
   mobileVocabSheet: document.getElementById('mobileVocabSheet'),
-  mobileVocabContent: document.getElementById('mobileVocabContent')
+  mobileVocabContent: document.getElementById('mobileVocabContent'),
+  mobileVocabPeekPill: document.getElementById('mobileVocabPeekPill'),
+  mobileVocabPeekPillMain: document.getElementById('mobileVocabPeekPillMain'),
+  mobileVocabPeekPillLabel: document.getElementById('mobileVocabPeekPillLabel'),
+  mobileVocabPeekPillWord: document.getElementById('mobileVocabPeekPillWord'),
+  mobileVocabPeekPillClose: document.getElementById('mobileVocabPeekPillClose')
 };

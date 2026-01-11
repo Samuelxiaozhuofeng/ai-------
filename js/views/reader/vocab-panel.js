@@ -17,11 +17,196 @@ export function createVocabPanel({
   getEffectiveWordStatus,
   getGlobalVocabEntryForWord
 }) {
+  const AUTO_OPEN_MAX_AGE_MS = 3500;
+  const AUTO_OPEN_MIN_DELAY_MS = 250;
+  const SCROLL_IDLE_MS = 400;
+
   /** @type {((container: HTMLElement) => void) | null} */
   let applyWordStatusesToContainer = null;
 
   function setApplyWordStatusesToContainer(fn) {
     applyWordStatusesToContainer = typeof fn === 'function' ? fn : null;
+  }
+
+  function ensureVocabUiState() {
+    if (!state.vocabUi) state.vocabUi = {};
+    if (!('feedbackState' in state.vocabUi)) state.vocabUi.feedbackState = 'idle';
+    if (!('peekPillState' in state.vocabUi)) state.vocabUi.peekPillState = 'hidden';
+    if (!('sheetState' in state.vocabUi)) state.vocabUi.sheetState = 'closed';
+    if (!('isUserScrolling' in state.vocabUi)) state.vocabUi.isUserScrolling = false;
+    if (!('scrollIdleTimer' in state.vocabUi)) state.vocabUi.scrollIdleTimer = null;
+    if (!('autoOpenCandidateSelectionId' in state.vocabUi)) state.vocabUi.autoOpenCandidateSelectionId = null;
+    if (!('autoOpenTimer' in state.vocabUi)) state.vocabUi.autoOpenTimer = null;
+  }
+
+  function isMobileViewport() {
+    return window.innerWidth <= 768;
+  }
+
+  function setSelectedWordProcessing(isProcessing) {
+    if (!state.selectedWordEl) return;
+    state.selectedWordEl.classList.toggle('word-processing', Boolean(isProcessing));
+  }
+
+  function canUseMobileVocabUi() {
+    return Boolean(elements.mobileVocabOverlay && elements.mobileVocabContent);
+  }
+
+  function hideMobilePeekPill() {
+    if (!elements.mobileVocabPeekPill) return;
+    elements.mobileVocabPeekPill.classList.remove('active', 'is-analyzing', 'is-ready', 'is-error');
+    elements.mobileVocabPeekPill.setAttribute('aria-hidden', 'true');
+  }
+
+  function showMobilePeekPill({ mode, word, message }) {
+    if (!elements.mobileVocabPeekPill || !elements.mobileVocabPeekPillLabel || !elements.mobileVocabPeekPillWord) return;
+    if (!isMobileViewport()) return;
+
+    elements.mobileVocabPeekPill.classList.add('active');
+    elements.mobileVocabPeekPill.classList.toggle('is-analyzing', mode === 'analyzing');
+    elements.mobileVocabPeekPill.classList.toggle('is-ready', mode === 'ready');
+    elements.mobileVocabPeekPill.classList.toggle('is-error', mode === 'error');
+    elements.mobileVocabPeekPill.setAttribute('aria-hidden', 'false');
+
+    const label =
+      mode === 'analyzing' ? (message || '正在解释') :
+        mode === 'ready' ? (message || '解释已就绪') :
+          (message || '解释失败');
+    elements.mobileVocabPeekPillLabel.textContent = label;
+    elements.mobileVocabPeekPillWord.textContent = word || '';
+  }
+
+  function openMobileVocabSheet({ reason = 'manual' } = {}) {
+    ensureVocabUiState();
+    state.vocabUi.sheetState = 'open';
+    state.vocabUi.peekPillState = 'hidden';
+    hideMobilePeekPill();
+    renderVocabularyPanel();
+  }
+
+  function closeMobileVocabSheet({ clearSelection = true } = {}) {
+    ensureVocabUiState();
+    state.vocabUi.sheetState = 'closed';
+    state.vocabUi.autoOpenCandidateSelectionId = null;
+    if (state.vocabUi.autoOpenTimer) {
+      clearTimeout(state.vocabUi.autoOpenTimer);
+      state.vocabUi.autoOpenTimer = null;
+    }
+    hideMobilePeekPill();
+
+    if (elements.mobileVocabOverlay) elements.mobileVocabOverlay.classList.remove('active');
+
+    if (clearSelection) {
+      state.selectedWord = null;
+      state.selectedWordDisplay = null;
+      state.selectedWordContext = null;
+      state.selectedWordAnalysis = null;
+      state.isSelectedAnalysisLoading = false;
+      if (state.selectedWordEl) {
+        state.selectedWordEl.classList.remove('word-selected', 'word-processing');
+        state.selectedWordEl = null;
+      }
+    }
+
+    cancelPendingAnalysis();
+    renderVocabularyPanel();
+  }
+
+  function isSelectedWordElementVisible() {
+    if (!state.selectedWordEl || !elements.readingContent) return true;
+    const wordRect = state.selectedWordEl.getBoundingClientRect();
+    const containerRect = elements.readingContent.getBoundingClientRect();
+    const margin = 40;
+    return !(wordRect.bottom < containerRect.top - margin || wordRect.top > containerRect.bottom + margin);
+  }
+
+  function canAutoOpenMobileSheetNow(selectionId) {
+    ensureVocabUiState();
+    if (!canUseMobileVocabUi()) return false;
+    if (!isMobileViewport()) return false;
+    if (!state.selectedWord) return false;
+    if (!state.selectedWordAnalysis) return false;
+    if (state.vocabUi.sheetState === 'open') return false;
+    if (state.vocabUi.isUserScrolling) return false;
+    if (!isSelectedWordElementVisible()) return false;
+
+    const clickedAt = state.selectedWordSelectedAt || 0;
+    const age = Date.now() - clickedAt;
+    if (age < AUTO_OPEN_MIN_DELAY_MS) return false;
+    if (age > AUTO_OPEN_MAX_AGE_MS) return false;
+
+    if (selectionId != null && selectionId !== state.selectedWordSelectionId) return false;
+    return true;
+  }
+
+  function maybeAutoOpenMobileSheet(selectionId) {
+    if (!canAutoOpenMobileSheetNow(selectionId)) return false;
+    openMobileVocabSheet({ reason: 'auto' });
+    return true;
+  }
+
+  function scheduleAutoOpenMobileSheet(selectionId) {
+    ensureVocabUiState();
+    if (!canUseMobileVocabUi() || !isMobileViewport()) return;
+    if (state.vocabUi.autoOpenTimer) clearTimeout(state.vocabUi.autoOpenTimer);
+
+    const clickedAt = state.selectedWordSelectedAt || 0;
+    const age = Date.now() - clickedAt;
+    if (age > AUTO_OPEN_MAX_AGE_MS) return;
+
+    const waitMs = Math.max(0, AUTO_OPEN_MIN_DELAY_MS - age);
+    state.vocabUi.autoOpenTimer = setTimeout(() => {
+      state.vocabUi.autoOpenTimer = null;
+      void maybeAutoOpenMobileSheet(selectionId);
+    }, waitMs);
+  }
+
+  function setupMobileScrollTracking() {
+    ensureVocabUiState();
+    if (!elements.readingContent) return;
+    if (!canUseMobileVocabUi()) return;
+
+    elements.readingContent.addEventListener('scroll', () => {
+      state.vocabUi.isUserScrolling = true;
+      if (state.vocabUi.scrollIdleTimer) clearTimeout(state.vocabUi.scrollIdleTimer);
+      state.vocabUi.scrollIdleTimer = setTimeout(() => {
+        state.vocabUi.scrollIdleTimer = null;
+        state.vocabUi.isUserScrolling = false;
+
+        const candidate = state.vocabUi.autoOpenCandidateSelectionId;
+        if (candidate != null) {
+          const clickedAt = state.selectedWordSelectedAt || 0;
+          if (Date.now() - clickedAt > AUTO_OPEN_MAX_AGE_MS) {
+            state.vocabUi.autoOpenCandidateSelectionId = null;
+            return;
+          }
+          const didOpen = maybeAutoOpenMobileSheet(candidate);
+          if (didOpen) state.vocabUi.autoOpenCandidateSelectionId = null;
+        }
+      }, SCROLL_IDLE_MS);
+    }, { passive: true });
+  }
+
+  function setupMobilePeekPillControls() {
+    if (!elements.mobileVocabPeekPillMain) return;
+    elements.mobileVocabPeekPillMain.addEventListener('click', () => {
+      ensureVocabUiState();
+      if (state.vocabUi.peekPillState === 'ready') {
+        openMobileVocabSheet({ reason: 'pill' });
+        return;
+      }
+      if (state.vocabUi.peekPillState === 'error') {
+        queueSelectedWordAnalysis({ debounceMs: 0, force: true, requestId: state.selectedWordSelectionId, autoOpenOnReady: true });
+      }
+    });
+
+    elements.mobileVocabPeekPillClose?.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      ensureVocabUiState();
+      state.vocabUi.peekPillState = 'hidden';
+      hideMobilePeekPill();
+    });
   }
 
   async function refreshVocabularyCache() {
@@ -88,24 +273,69 @@ export function createVocabPanel({
     }
   }
 
-  function queueSelectedWordAnalysis({ debounceMs = 250, force = false } = {}) {
+  function makeInstantCacheKey(normalizedWord, context) {
+    const lang = getCurrentBookLanguage();
+    const contextText = (context?.currentSentence || context?.fullContext || '').trim();
+    const contextKey = contextText.length > 240 ? contextText.slice(0, 240) : contextText;
+    return `${lang}::${normalizedWord}::${contextKey}`;
+  }
+
+  function queueSelectedWordAnalysis({ debounceMs = 250, force = false, requestId = null, autoOpenOnReady = false } = {}) {
     if (!state.selectedWord || !state.selectedWordDisplay) return;
-    if (!isAiConfigured()) return;
-    if (!force && state.selectedWordAnalysis) return;
+    ensureVocabUiState();
+    if (state.vocabUi.autoOpenTimer) {
+      clearTimeout(state.vocabUi.autoOpenTimer);
+      state.vocabUi.autoOpenTimer = null;
+    }
+
+    const normalizedWord = state.selectedWord;
+    const display = state.selectedWordDisplay;
+    const context = state.selectedWordContext;
+
+    if (!isAiConfigured()) {
+      state.vocabUi.feedbackState = 'error';
+      state.vocabUi.peekPillState = 'error';
+      setSelectedWordProcessing(false);
+      if (canUseMobileVocabUi()) showMobilePeekPill({ mode: 'error', word: display, message: '请先配置 AI' });
+      return;
+    }
+
+    const cacheKey = makeInstantCacheKey(normalizedWord, context);
+    const cached = state.instantAnalysisCache?.get?.(cacheKey) || null;
+    if (!force && (state.selectedWordAnalysis || cached)) {
+      if (!state.selectedWordAnalysis && cached) state.selectedWordAnalysis = cached;
+      state.isSelectedAnalysisLoading = false;
+      state.vocabUi.feedbackState = 'ready';
+      state.vocabUi.peekPillState = 'ready';
+      setSelectedWordProcessing(false);
+      if (canUseMobileVocabUi()) showMobilePeekPill({ mode: 'ready', word: display });
+      if (autoOpenOnReady) {
+        const selectionId = requestId ?? state.selectedWordSelectionId;
+        if (state.vocabUi.isUserScrolling) {
+          state.vocabUi.autoOpenCandidateSelectionId = selectionId;
+        } else {
+          scheduleAutoOpenMobileSheet(selectionId);
+        }
+      }
+      renderVocabularyPanel();
+      return;
+    }
 
     cancelPendingAnalysis();
 
     state.isSelectedAnalysisLoading = true;
+    state.vocabUi.feedbackState = 'processing';
+    state.vocabUi.peekPillState = 'analyzing';
+    setSelectedWordProcessing(true);
+    if (canUseMobileVocabUi()) showMobilePeekPill({ mode: 'analyzing', word: display });
     renderVocabularyPanel();
 
-    const requestId = ++state.analysisRequestSeq;
-    const key = state.selectedWord;
-    const display = state.selectedWordDisplay;
-    const context = state.selectedWordContext;
+    const actualRequestId = requestId ?? state.selectedWordSelectionId ?? (++state.analysisRequestSeq);
+    state.analysisRequestSeq = actualRequestId;
 
     state.analysisDebounceTimer = setTimeout(() => {
       state.analysisDebounceTimer = null;
-      void runInstantAnalysisRequest(requestId, key, display, context);
+      void runInstantAnalysisRequest(actualRequestId, normalizedWord, display, context, { autoOpenOnReady, cacheKey });
     }, Math.max(0, debounceMs));
   }
 
@@ -118,7 +348,7 @@ export function createVocabPanel({
     globalVocabByWord.set(key, entry);
   }
 
-  async function runInstantAnalysisRequest(requestId, normalizedWord, displayWord, context) {
+  async function runInstantAnalysisRequest(requestId, normalizedWord, displayWord, context, { autoOpenOnReady = false, cacheKey = null } = {}) {
     if (!normalizedWord || !displayWord) return;
 
     const controller = new AbortController();
@@ -131,8 +361,10 @@ export function createVocabPanel({
 
       if (requestId !== state.analysisRequestSeq) return;
       if (state.selectedWord !== normalizedWord) return;
+      if (requestId !== state.selectedWordSelectionId) return;
 
       state.selectedWordAnalysis = result;
+      if (cacheKey && state.instantAnalysisCache?.set) state.instantAnalysisCache.set(cacheKey, result);
 
       const existing = state.vocabularyByWord.get(normalizedWord) || null;
       if (existing) {
@@ -162,6 +394,11 @@ export function createVocabPanel({
     } catch (error) {
       if (error?.name === 'AbortError') return;
       console.error('Instant analysis error:', error);
+      ensureVocabUiState();
+      state.vocabUi.feedbackState = 'error';
+      state.vocabUi.peekPillState = 'error';
+      setSelectedWordProcessing(false);
+      if (canUseMobileVocabUi()) showMobilePeekPill({ mode: 'error', word: displayWord, message: '分析失败，点此重试' });
       showNotification('分析失败: ' + error.message, 'error');
     } finally {
       if (state.analysisAbortController === controller) {
@@ -169,6 +406,21 @@ export function createVocabPanel({
       }
       if (requestId === state.analysisRequestSeq && state.selectedWord === normalizedWord) {
         state.isSelectedAnalysisLoading = false;
+        setSelectedWordProcessing(false);
+        if (state.selectedWordAnalysis) {
+          ensureVocabUiState();
+          state.vocabUi.feedbackState = 'ready';
+          state.vocabUi.peekPillState = 'ready';
+          if (canUseMobileVocabUi()) showMobilePeekPill({ mode: 'ready', word: displayWord });
+
+          if (autoOpenOnReady) {
+            if (state.vocabUi.isUserScrolling) {
+              state.vocabUi.autoOpenCandidateSelectionId = requestId;
+            } else {
+              scheduleAutoOpenMobileSheet(requestId);
+            }
+          }
+        }
         renderVocabularyPanel();
       }
     }
@@ -181,6 +433,8 @@ export function createVocabPanel({
 
   function selectWordFromVocabulary(normalizedWord) {
     const entry = state.vocabularyByWord.get(normalizedWord) || null;
+    state.selectedWordSelectionId = (state.selectedWordSelectionId || 0) + 1;
+    state.selectedWordSelectedAt = Date.now();
     state.selectedWord = normalizedWord;
     state.selectedWordDisplay = entry?.displayWord || normalizedWord;
     state.selectedWordContext = entry?.context || null;
@@ -284,7 +538,10 @@ export function createVocabPanel({
 
   async function handleVocabPanelClick(event) {
     const actionEl = event.target.closest?.('[data-action]');
-    if (!actionEl || !elements.vocabAnalysisContent.contains(actionEl)) return;
+    if (!actionEl) return;
+    const inDesktop = Boolean(elements.vocabAnalysisContent?.contains(actionEl));
+    const inMobile = Boolean(elements.mobileVocabContent?.contains(actionEl));
+    if (!inDesktop && !inMobile) return;
 
     const action = actionEl.dataset.action;
     if (action === 'filter') {
@@ -315,7 +572,7 @@ export function createVocabPanel({
     }
 
     if (action === 'retry-analysis') {
-      queueSelectedWordAnalysis({ debounceMs: 0, force: true });
+      queueSelectedWordAnalysis({ debounceMs: 0, force: true, requestId: state.selectedWordSelectionId, autoOpenOnReady: true });
     }
   }
 
@@ -404,6 +661,7 @@ export function createVocabPanel({
   function renderVocabularyPanel() {
     const isMobile = window.innerWidth <= 768;
     const container = elements.vocabAnalysisContent;
+    ensureVocabUiState();
 
     if (!state.currentBookId) {
       container.innerHTML = '<p class="empty-state">导入书籍后开始学习</p>';
@@ -482,14 +740,13 @@ export function createVocabPanel({
 
     container.innerHTML = html;
 
-    // Mirror to mobile sheet if needed
-    if (elements.mobileVocabContent) {
-      if (state.selectedWord && isMobile) {
+    // Mirror to mobile sheet if needed (only when explicitly opened)
+    if (elements.mobileVocabContent && elements.mobileVocabOverlay) {
+      const shouldShowSheet = Boolean(state.selectedWord && isMobile && state.vocabUi.sheetState === 'open');
+      if (shouldShowSheet) {
         elements.mobileVocabContent.innerHTML = html;
         elements.mobileVocabOverlay.classList.add('active');
-        // Attach event listeners to mirrored content
-        elements.mobileVocabContent.addEventListener('click', handleVocabPanelClick);
-      } else if (!state.selectedWord && isMobile) {
+      } else {
         elements.mobileVocabOverlay.classList.remove('active');
       }
     }
@@ -513,16 +770,17 @@ export function createVocabPanel({
   if (elements.mobileVocabOverlay) {
     elements.mobileVocabOverlay.addEventListener('click', (e) => {
       if (e.target === elements.mobileVocabOverlay) {
-        state.selectedWord = null;
-        if (state.selectedWordEl) {
-          state.selectedWordEl.classList.remove('word-selected');
-          state.selectedWordEl = null;
-        }
-        elements.mobileVocabOverlay.classList.remove('active');
-        renderVocabularyPanel();
+        closeMobileVocabSheet({ clearSelection: true });
       }
     });
   }
+
+  if (elements.mobileVocabContent) {
+    elements.mobileVocabContent.addEventListener('click', handleVocabPanelClick);
+  }
+
+  setupMobileScrollTracking();
+  setupMobilePeekPillControls();
 
   return {
     setApplyWordStatusesToContainer,
@@ -532,6 +790,8 @@ export function createVocabPanel({
     handleVocabPanelClick,
     queueSelectedWordAnalysis,
     getCachedAnalysisForSelectedWord,
-    setSelectedWordStatus
+    setSelectedWordStatus,
+    openMobileVocabSheet,
+    closeMobileVocabSheet
   };
 }

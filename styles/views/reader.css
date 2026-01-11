@@ -607,6 +607,34 @@
   background: rgba(0, 122, 255, 0.28);
 }
 
+.word-processing {
+  position: relative;
+}
+
+.word-processing::after {
+  content: "";
+  position: absolute;
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--accent-primary);
+  top: -2px;
+  right: -2px;
+  box-shadow: 0 0 0 2px var(--bg-primary);
+  animation: vocab-processing-pulse 1s ease-in-out infinite;
+  pointer-events: none;
+}
+
+@keyframes vocab-processing-pulse {
+  0% { transform: scale(1); opacity: 0.55; }
+  50% { transform: scale(1.6); opacity: 1; }
+  100% { transform: scale(1); opacity: 0.55; }
+}
+
+.vocab-peek-pill {
+  display: none;
+}
+
 /* Empty State */
 .empty-state {
   color: var(--text-muted);

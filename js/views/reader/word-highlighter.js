@@ -30,7 +30,10 @@ export function createWordHighlighter({
     const target = event.target.closest?.('.word');
     if (!target || !elements.readingContent.contains(target)) return;
 
-    if (state.selectedWordEl) state.selectedWordEl.classList.remove('word-selected');
+    state.selectedWordSelectionId = (state.selectedWordSelectionId || 0) + 1;
+    state.selectedWordSelectedAt = Date.now();
+
+    if (state.selectedWordEl) state.selectedWordEl.classList.remove('word-selected', 'word-processing');
     state.selectedWordEl = target;
     state.selectedWordEl.classList.add('word-selected');
 
@@ -53,12 +56,14 @@ export function createWordHighlighter({
         && effectiveStatus !== WORD_STATUSES.LEARNING
     );
     if (shouldAutoStudy) {
-      await setSelectedWordStatus(WORD_STATUSES.LEARNING, { trigger: 'click' });
+      void setSelectedWordStatus(WORD_STATUSES.LEARNING, { trigger: 'click' });
     }
 
-    if (state.selectedWord && !state.selectedWordAnalysis) {
-      queueSelectedWordAnalysis({ debounceMs: 250 });
-    }
+    queueSelectedWordAnalysis({
+      debounceMs: 0,
+      requestId: state.selectedWordSelectionId,
+      autoOpenOnReady: true
+    });
 
     renderVocabularyPanel();
   }
@@ -158,7 +163,10 @@ export function createWordHighlighter({
 
       state.suppressWordClickUntil = Date.now() + 300;
 
-      if (state.selectedWordEl) state.selectedWordEl.classList.remove('word-selected');
+      state.selectedWordSelectionId = (state.selectedWordSelectionId || 0) + 1;
+      state.selectedWordSelectedAt = Date.now();
+
+      if (state.selectedWordEl) state.selectedWordEl.classList.remove('word-selected', 'word-processing');
       state.selectedWordEl = null;
 
       state.selectedWord = normalized;
@@ -174,9 +182,11 @@ export function createWordHighlighter({
 
       switchTab('vocab-analysis');
 
-      if (!state.selectedWordAnalysis) {
-        queueSelectedWordAnalysis({ debounceMs: 250 });
-      }
+      queueSelectedWordAnalysis({
+        debounceMs: 0,
+        requestId: state.selectedWordSelectionId,
+        autoOpenOnReady: true
+      });
 
       renderVocabularyPanel();
     }, 0);
@@ -237,4 +247,3 @@ export function createWordHighlighter({
     handleReadingSelectionEnd
   };
 }
-

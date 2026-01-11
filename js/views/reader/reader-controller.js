@@ -34,10 +34,21 @@ export function createReaderController(elements) {
     selectedWordDisplay: null,
     selectedWordContext: null,
     selectedWordAnalysis: null,
+    selectedWordSelectionId: 0,
+    selectedWordSelectedAt: 0,
     isSelectedAnalysisLoading: false,
     analysisDebounceTimer: null,
     analysisRequestSeq: 0,
     analysisAbortController: null,
+    instantAnalysisCache: new Map(),
+    vocabUi: {
+      feedbackState: 'idle', // idle | processing | ready | error
+      peekPillState: 'hidden', // hidden | analyzing | ready | error
+      sheetState: 'closed', // closed | open
+      isUserScrolling: false,
+      scrollIdleTimer: null,
+      autoOpenCandidateSelectionId: null
+    },
     suppressWordClickUntil: 0,
     clickedWordsOnPage: new Set(),
     encounterCountByWord: new Map(),
