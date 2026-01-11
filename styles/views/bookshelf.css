@@ -152,7 +152,7 @@
   overflow: hidden;
   background: var(--bg-tertiary);
   box-shadow: var(--shadow-md);
-  position: relative;
+  position: relative !important;
 }
 
 .book-cover img {
@@ -224,8 +224,8 @@
 
 .book-menu-btn {
   position: absolute;
-  top: var(--spacing-sm);
-  right: var(--spacing-sm);
+  top: 8px;
+  right: 8px;
   width: 32px;
   height: 32px;
   border-radius: 50%;
@@ -241,6 +241,7 @@
   font-size: 16px;
   backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
+  z-index: 10;
 }
 
 .book-card:hover .book-menu-btn {
