@@ -230,5 +230,12 @@ export const elements = {
   mobileChapterSheet: document.getElementById('mobileChapterSheet'),
   mobileChapterContent: document.getElementById('mobileChapterContent'),
   mobileChapterAnalysisRefreshBtn: document.getElementById('mobileChapterAnalysisRefreshBtn'),
-  mobileChapterAnalysisCloseBtn: document.getElementById('mobileChapterAnalysisCloseBtn')
+  mobileChapterAnalysisCloseBtn: document.getElementById('mobileChapterAnalysisCloseBtn'),
+
+  // Mobile Chapter Peek Pill
+  mobileChapterPeekPill: document.getElementById('mobileChapterPeekPill'),
+  mobileChapterPeekPillMain: document.getElementById('mobileChapterPeekPillMain'),
+  mobileChapterPeekPillLabel: document.getElementById('mobileChapterPeekPillLabel'),
+  mobileChapterPeekPillTitle: document.getElementById('mobileChapterPeekPillTitle'),
+  mobileChapterPeekPillClose: document.getElementById('mobileChapterPeekPillClose')
 };

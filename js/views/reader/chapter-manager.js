@@ -14,9 +14,25 @@ export function createChapterManager({
   switchTab
 }) {
   let chapterAnalysisRequestId = 0;
+  let chapterPeekPillState = 'hidden';
+  let chapterPeekPillDismissedForChapterId = null;
+  let lastReadyChapterId = null;
+  let lastReadyChapterTitle = '';
 
   function isMobileViewport() {
     return window.innerWidth <= 768;
+  }
+
+  function getCurrentChapterMeta() {
+    if (!state.currentBook) return null;
+    const chapter = state.currentBook.chapters[state.currentChapterIndex];
+    if (!chapter) return null;
+    return {
+      chapter,
+      chapterId: chapter.id,
+      chapterTitle: chapter.title || '',
+      bookId: state.currentBookId || null
+    };
   }
 
   function canUseMobileChapterUi() {
@@ -28,17 +44,69 @@ export function createChapterManager({
     );
   }
 
+  function canUseMobileChapterPeekPillUi() {
+    return Boolean(
+      elements.mobileChapterPeekPill &&
+      elements.mobileChapterPeekPillMain &&
+      elements.mobileChapterPeekPillLabel &&
+      elements.mobileChapterPeekPillTitle &&
+      elements.mobileChapterPeekPillClose
+    );
+  }
+
+  function hideMobileChapterPeekPill() {
+    if (!elements.mobileChapterPeekPill) return;
+    chapterPeekPillState = 'hidden';
+    elements.mobileChapterPeekPill.classList.remove('active', 'is-analyzing', 'is-ready', 'is-error');
+    elements.mobileChapterPeekPill.setAttribute('aria-hidden', 'true');
+  }
+
+  function showMobileChapterPeekPill({ mode, title, message } = {}) {
+    if (!canUseMobileChapterPeekPillUi()) return;
+    if (!isMobileViewport()) return;
+
+    chapterPeekPillState =
+      mode === 'analyzing' ? 'analyzing' :
+        mode === 'ready' ? 'ready' :
+          mode === 'error' ? 'error' : 'hidden';
+
+    elements.mobileChapterPeekPill.classList.add('active');
+    elements.mobileChapterPeekPill.classList.toggle('is-analyzing', mode === 'analyzing');
+    elements.mobileChapterPeekPill.classList.toggle('is-ready', mode === 'ready');
+    elements.mobileChapterPeekPill.classList.toggle('is-error', mode === 'error');
+    elements.mobileChapterPeekPill.setAttribute('aria-hidden', 'false');
+
+    const label =
+      mode === 'analyzing' ? (message || '正在分析中…') :
+        mode === 'ready' ? (message || '章节分析已就绪') :
+          (message || '章节分析失败');
+
+    elements.mobileChapterPeekPillLabel.textContent = label;
+    elements.mobileChapterPeekPillTitle.textContent = title || '';
+  }
+
   function openMobileChapterSheet() {
     if (!canUseMobileChapterUi()) return;
     if (!isMobileViewport()) return;
     elements.mobileChapterOverlay.classList.add('active');
     elements.mobileChapterOverlay.setAttribute('aria-hidden', 'false');
+    hideMobileChapterPeekPill();
   }
 
-  function closeMobileChapterSheet() {
+  function closeMobileChapterSheet({ reshowPeekPill = true } = {}) {
     if (!elements.mobileChapterOverlay) return;
     elements.mobileChapterOverlay.classList.remove('active');
     elements.mobileChapterOverlay.setAttribute('aria-hidden', 'true');
+
+    if (!reshowPeekPill) return;
+    if (!isMobileViewport()) return;
+    const meta = getCurrentChapterMeta();
+    if (!meta) return;
+    if (!meta.bookId) return;
+    if (!canUseMobileChapterPeekPillUi()) return;
+    if (chapterPeekPillDismissedForChapterId === meta.chapterId) return;
+    if (lastReadyChapterId !== meta.chapterId) return;
+    showMobileChapterPeekPill({ mode: 'ready', title: lastReadyChapterTitle });
   }
 
   function invalidatePendingChapterAnalysis() {
@@ -90,7 +158,11 @@ export function createChapterManager({
 
     pagination.schedulePageProgressSave();
     invalidatePendingChapterAnalysis();
-    closeMobileChapterSheet();
+    closeMobileChapterSheet({ reshowPeekPill: false });
+    hideMobileChapterPeekPill();
+    chapterPeekPillDismissedForChapterId = null;
+    lastReadyChapterId = null;
+    lastReadyChapterTitle = '';
 
     state.currentChapterIndex = index;
     const chapter = state.currentBook.chapters[index];
@@ -143,12 +215,17 @@ export function createChapterManager({
     if (elements.mobileChapterContent) elements.mobileChapterContent.innerHTML = container.innerHTML;
   }
 
-  async function startChapterAnalysis({ force = false, showMobile = isMobileViewport() && canUseMobileChapterUi() } = {}) {
+  async function startChapterAnalysis({
+    force = false,
+    showMobile = false,
+    focusTab = true,
+    renderDesktopLoading = true
+  } = {}) {
     if (!state.currentBook) return;
 
-    const chapter = state.currentBook.chapters[state.currentChapterIndex];
-    const bookId = state.currentBookId || null;
-    const chapterId = chapter.id;
+    const meta = getCurrentChapterMeta();
+    if (!meta) return;
+    const { chapter, chapterId, chapterTitle, bookId } = meta;
 
     const requestId = ++chapterAnalysisRequestId;
 
@@ -158,12 +235,19 @@ export function createChapterManager({
       const savedAnalysis = await getChapterAnalysis(bookId, chapterId);
       if (savedAnalysis?.content) {
         renderChapterAnalysisHtml(formatMarkdown(savedAnalysis.content));
+        lastReadyChapterId = chapterId;
+        lastReadyChapterTitle = chapterTitle;
         return;
       }
     }
 
-    switchTab('chapter-analysis');
-    renderChapterAnalysisHtml('<p class="loading">Analyzing chapter...</p>');
+    if (focusTab) switchTab('chapter-analysis');
+    if (renderDesktopLoading) {
+      elements.chapterAnalysisContent.innerHTML = '<p class="loading">Analyzing chapter...</p>';
+    }
+    if (elements.mobileChapterContent) {
+      elements.mobileChapterContent.innerHTML = '<p class="loading">Analyzing chapter...</p>';
+    }
 
     const { analyzeChapter } = await import('../../ai-service.js');
 
@@ -178,11 +262,16 @@ export function createChapterManager({
       if (bookId) {
         await saveChapterAnalysis(bookId, chapterId, result);
       }
+
+      lastReadyChapterId = chapterId;
+      lastReadyChapterTitle = chapterTitle;
     } catch (error) {
       if (requestId !== chapterAnalysisRequestId) return;
 
       const baseErrorHtml = `<p class="text-error">Error: ${escapeHtml(error.message)}</p>`;
-      elements.chapterAnalysisContent.innerHTML = baseErrorHtml;
+      if (renderDesktopLoading) {
+        elements.chapterAnalysisContent.innerHTML = baseErrorHtml;
+      }
 
       if (elements.mobileChapterContent) {
         elements.mobileChapterContent.innerHTML = `${baseErrorHtml}
@@ -195,15 +284,47 @@ export function createChapterManager({
     }
   }
 
-  async function handleChapterAnalysis() {
-    if (!state.currentBook) return;
+  async function queueMobileChapterAnalysis() {
+    const meta = getCurrentChapterMeta();
+    if (!meta || !meta.bookId) return;
+    if (!isMobileViewport()) return;
+    if (!canUseMobileChapterPeekPillUi()) return;
 
-    if (isMobileViewport() && canUseMobileChapterUi()) {
-      await startChapterAnalysis({ force: false, showMobile: true });
+    const { bookId, chapterId, chapterTitle } = meta;
+
+    const savedAnalysis = await getChapterAnalysis(bookId, chapterId);
+    if (savedAnalysis?.content) {
+      lastReadyChapterId = chapterId;
+      lastReadyChapterTitle = chapterTitle;
+      if (chapterPeekPillDismissedForChapterId !== chapterId) {
+        showMobileChapterPeekPill({ mode: 'ready', title: chapterTitle });
+      }
       return;
     }
 
-    await startChapterAnalysis({ force: true, showMobile: false });
+    chapterPeekPillDismissedForChapterId = null;
+    showMobileChapterPeekPill({ mode: 'analyzing', title: chapterTitle, message: '正在分析中…' });
+    await startChapterAnalysis({ force: true, showMobile: false, focusTab: false, renderDesktopLoading: false });
+
+    const stillSame = getCurrentChapterMeta()?.chapterId === chapterId;
+    if (!stillSame) return;
+
+    if (lastReadyChapterId === chapterId && chapterPeekPillDismissedForChapterId !== chapterId) {
+      showMobileChapterPeekPill({ mode: 'ready', title: chapterTitle });
+    } else if (chapterPeekPillState !== 'hidden' && chapterPeekPillDismissedForChapterId !== chapterId) {
+      showMobileChapterPeekPill({ mode: 'error', title: chapterTitle });
+    }
+  }
+
+  async function handleChapterAnalysis() {
+    if (!state.currentBook) return;
+
+    if (isMobileViewport() && canUseMobileChapterPeekPillUi()) {
+      await queueMobileChapterAnalysis();
+      return;
+    }
+
+    await startChapterAnalysis({ force: true, showMobile: false, focusTab: true, renderDesktopLoading: true });
   }
 
   function renderChapterAnalysis(result) {
@@ -257,7 +378,7 @@ export function createChapterManager({
 
   elements.mobileChapterAnalysisRefreshBtn?.addEventListener('click', (e) => {
     e.preventDefault();
-    void startChapterAnalysis({ force: true, showMobile: true });
+    void startChapterAnalysis({ force: true, showMobile: true, focusTab: false, renderDesktopLoading: true });
   });
 
   elements.mobileChapterContent?.addEventListener('click', (e) => {
@@ -266,8 +387,39 @@ export function createChapterManager({
     const action = actionEl.dataset.action;
     if (action === 'retry-chapter-analysis') {
       e.preventDefault();
-      void startChapterAnalysis({ force: true, showMobile: true });
+      void startChapterAnalysis({ force: true, showMobile: true, focusTab: false, renderDesktopLoading: true });
     }
+  });
+
+  elements.mobileChapterPeekPillMain?.addEventListener('click', () => {
+    if (!isMobileViewport()) return;
+    const meta = getCurrentChapterMeta();
+    if (!meta) return;
+
+    if (chapterPeekPillState === 'ready') {
+      openMobileChapterSheet();
+      return;
+    }
+
+    if (chapterPeekPillState === 'error') {
+      chapterPeekPillDismissedForChapterId = null;
+      showMobileChapterPeekPill({ mode: 'analyzing', title: meta.chapterTitle, message: '正在分析中…' });
+      void startChapterAnalysis({ force: true, showMobile: false, focusTab: false, renderDesktopLoading: false })
+        .then(() => {
+          if (lastReadyChapterId === meta.chapterId && chapterPeekPillDismissedForChapterId !== meta.chapterId) {
+            showMobileChapterPeekPill({ mode: 'ready', title: meta.chapterTitle });
+          } else if (chapterPeekPillDismissedForChapterId !== meta.chapterId) {
+            showMobileChapterPeekPill({ mode: 'error', title: meta.chapterTitle });
+          }
+        });
+    }
+  });
+
+  elements.mobileChapterPeekPillClose?.addEventListener('click', (e) => {
+    e.preventDefault();
+    const meta = getCurrentChapterMeta();
+    if (meta?.chapterId) chapterPeekPillDismissedForChapterId = meta.chapterId;
+    hideMobileChapterPeekPill();
   });
 
   return {
