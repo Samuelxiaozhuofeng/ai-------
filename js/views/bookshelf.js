@@ -261,7 +261,7 @@ export function createBookshelfController(elements) {
     });
   }
 
-  function applyBooksSnapshot(books, { remoteIds = null, localIdSet = null } = {}) {
+  async function applyBooksSnapshot(books, { remoteIds = null, localIdSet = null } = {}) {
     /** @type {Set<string>} */
     const changedIds = new Set();
 
@@ -288,8 +288,14 @@ export function createBookshelfController(elements) {
 
     if (remoteIds) {
       const remoteSet = new Set(remoteIds);
+      /** @type {Array<string>} */
+      const deleteIds = [];
       for (const [id, book] of booksById.entries()) {
         if (book?.isCached && !remoteSet.has(id)) {
+          if (book?.storagePath) {
+            deleteIds.push(id);
+            continue;
+          }
           if (!book.localOnly) {
             booksById.set(id, { ...book, localOnly: true });
             changedIds.add(id);
@@ -297,6 +303,15 @@ export function createBookshelfController(elements) {
         } else if (book?.localOnly && remoteSet.has(id)) {
           booksById.set(id, { ...book, localOnly: false });
           changedIds.add(id);
+        }
+      }
+      for (const id of deleteIds) {
+        try {
+          await deleteBookFromDB(id);
+          booksById.delete(id);
+          changedIds.add(id);
+        } catch (error) {
+          console.warn('Failed to delete book removed from remote:', id, error);
         }
       }
     }
@@ -314,7 +329,7 @@ export function createBookshelfController(elements) {
 
     const localBooks = await getAllBooks();
     const normalized = (localBooks || []).map((b) => ({ ...b, isCached: true }));
-    applyBooksSnapshot(normalized);
+    await applyBooksSnapshot(normalized);
 
     const seq = ++loadSeq;
     scheduleIdle(() => {
@@ -354,7 +369,7 @@ export function createBookshelfController(elements) {
         return merged;
       });
 
-      applyBooksSnapshot(mergedRemote, { remoteIds, localIdSet });
+      await applyBooksSnapshot(mergedRemote, { remoteIds, localIdSet });
       renderBookshelf({ isPatchOnly: true });
     } catch (error) {
       console.warn('Failed to revalidate remote books:', error);
@@ -514,7 +529,7 @@ export function createBookshelfController(elements) {
         void autoSyncIfNeeded({ reason: 'bookshelf' })
           .then(async () => {
             const nextLocal = await getAllBooks().catch(() => []);
-            applyBooksSnapshot((nextLocal || []).map((b) => ({ ...b, isCached: true })));
+            await applyBooksSnapshot((nextLocal || []).map((b) => ({ ...b, isCached: true })));
             renderBookshelf({ isPatchOnly: true });
           })
           .catch((error) => {
