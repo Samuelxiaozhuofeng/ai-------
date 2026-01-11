@@ -122,18 +122,33 @@ export function createReaderController(elements) {
     // Swipe Gesture Support
     let touchStartX = 0;
     let touchEndX = 0;
+    let touchStartY = 0;
+    let touchEndY = 0;
     const swipeThreshold = 50; // pixels
+    const verticalTolerance = 20; // 垂直滑动容忍度（超过则视为滚动/选择意图）
 
     elements.readingContent.addEventListener('touchstart', (e) => {
       touchStartX = e.changedTouches[0].screenX;
+      touchStartY = e.changedTouches[0].screenY;
     }, { passive: true });
 
     elements.readingContent.addEventListener('touchend', (e) => {
       if (!state.isPageFlipMode) return;
 
       touchEndX = e.changedTouches[0].screenX;
+      touchEndY = e.changedTouches[0].screenY;
       const diffX = touchEndX - touchStartX;
+      const diffY = touchEndY - touchStartY;
 
+      // 1) 垂直滑动检测：用户可能在滚动内容，而不是翻页
+      if (Math.abs(diffY) > verticalTolerance) return;
+
+      // 2) 文本选择检测：用户正在选择文本时不应触发翻页
+      const selection = window.getSelection?.();
+      const hasTextSelection = Boolean(selection && selection.toString().length > 0);
+      if (hasTextSelection) return;
+
+      // 3) 增强判断：仅当水平滑动明显时才翻页
       if (Math.abs(diffX) > swipeThreshold) {
         if (diffX > 0) {
           // Swipe Right -> Previous Page
