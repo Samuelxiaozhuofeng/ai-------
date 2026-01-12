@@ -20,6 +20,8 @@ export function createVocabPanel({
   const AUTO_OPEN_MAX_AGE_MS = 3500;
   const AUTO_OPEN_MIN_DELAY_MS = 250;
   const SCROLL_IDLE_MS = 400;
+  const MOBILE_SHEET_GAP_PX = 16;
+  const MOBILE_SHEET_MIN_HEIGHT_PX = 160;
 
   /** @type {((container: HTMLElement) => void) | null} */
   let applyWordStatusesToContainer = null;
@@ -33,6 +35,8 @@ export function createVocabPanel({
     if (!('feedbackState' in state.vocabUi)) state.vocabUi.feedbackState = 'idle';
     if (!('peekPillState' in state.vocabUi)) state.vocabUi.peekPillState = 'hidden';
     if (!('sheetState' in state.vocabUi)) state.vocabUi.sheetState = 'closed';
+    if (!('isExpanded' in state.vocabUi)) state.vocabUi.isExpanded = false;
+    if (!('expandedSelectionId' in state.vocabUi)) state.vocabUi.expandedSelectionId = null;
     if (!('isUserScrolling' in state.vocabUi)) state.vocabUi.isUserScrolling = false;
     if (!('scrollIdleTimer' in state.vocabUi)) state.vocabUi.scrollIdleTimer = null;
     if (!('autoOpenCandidateSelectionId' in state.vocabUi)) state.vocabUi.autoOpenCandidateSelectionId = null;
@@ -50,6 +54,166 @@ export function createVocabPanel({
 
   function canUseMobileVocabUi() {
     return Boolean(elements.mobileVocabOverlay && elements.mobileVocabContent);
+  }
+
+  function clearMobileVocabSheetPosition() {
+    if (!elements.mobileVocabSheet) return;
+    delete elements.mobileVocabSheet.dataset.position;
+    elements.mobileVocabSheet.style.removeProperty('--sheet-max-height');
+  }
+
+  function applyMobileVocabSheetPosition() {
+    if (!elements.mobileVocabSheet) return;
+    if (!isMobileViewport()) {
+      clearMobileVocabSheetPosition();
+      return;
+    }
+
+    const wordEl = state.selectedWordEl;
+    if (!wordEl || typeof wordEl.getBoundingClientRect !== 'function') {
+      clearMobileVocabSheetPosition();
+      return;
+    }
+
+    const rect = wordEl.getBoundingClientRect();
+    const viewportHeight = window.innerHeight || document.documentElement?.clientHeight || 0;
+    if (!viewportHeight) return;
+
+    const inViewport = rect.bottom >= 0 && rect.top <= viewportHeight;
+    if (!inViewport) {
+      clearMobileVocabSheetPosition();
+      return;
+    }
+
+    const centerY = rect.top + rect.height / 2;
+    const preferTop = centerY > viewportHeight / 2;
+
+    const spaceAbove = Math.max(0, rect.top - MOBILE_SHEET_GAP_PX);
+    const spaceBelow = Math.max(0, viewportHeight - rect.bottom - MOBILE_SHEET_GAP_PX);
+
+    let position = preferTop ? 'top' : 'bottom';
+    let maxHeight = position === 'top' ? spaceAbove : spaceBelow;
+
+    if (maxHeight < MOBILE_SHEET_MIN_HEIGHT_PX) {
+      const alternative = position === 'top' ? spaceBelow : spaceAbove;
+      if (alternative > maxHeight) {
+        position = position === 'top' ? 'bottom' : 'top';
+        maxHeight = alternative;
+      }
+    }
+
+    elements.mobileVocabSheet.dataset.position = position;
+    elements.mobileVocabSheet.style.setProperty('--sheet-max-height', `${Math.max(0, Math.min(viewportHeight, Math.floor(maxHeight)))}px`);
+  }
+
+  function renderMobileVocabSheetContent() {
+    if (!elements.mobileVocabContent || !elements.mobileVocabSheet) return;
+    ensureVocabUiState();
+
+    const selectionId = state.selectedWordSelectionId || null;
+    if (state.vocabUi.expandedSelectionId !== selectionId) {
+      state.vocabUi.isExpanded = false;
+      state.vocabUi.expandedSelectionId = null;
+    }
+
+    const isExpanded = Boolean(state.vocabUi.isExpanded);
+    elements.mobileVocabSheet.classList.toggle('mobile-vocab-sheet--expanded', isExpanded);
+    elements.mobileVocabSheet.classList.toggle('mobile-vocab-sheet--compact', !isExpanded);
+
+    if (!state.selectedWord) {
+      elements.mobileVocabContent.innerHTML = `
+        <div class="vocab-compact-view">
+          <div class="vocab-compact-empty">点击正文中的单词开始</div>
+        </div>
+      `;
+      return;
+    }
+
+    const displayWord = state.selectedWordDisplay || state.selectedWord;
+    const analysis = state.selectedWordAnalysis;
+    const isLoading = Boolean(state.isSelectedAnalysisLoading && !analysis);
+
+    if (isLoading) {
+      elements.mobileVocabContent.innerHTML = `
+        <div class="vocab-compact-view">
+          <div class="vocab-compact-word">${escapeHtml(displayWord)}</div>
+          <div class="vocab-compact-status">正在分析...</div>
+        </div>
+      `;
+      return;
+    }
+
+    if (!analysis) {
+      elements.mobileVocabContent.innerHTML = `
+        <div class="vocab-compact-view">
+          <div class="vocab-compact-word">${escapeHtml(displayWord)}</div>
+          <div class="vocab-compact-status">暂无解释</div>
+        </div>
+      `;
+      return;
+    }
+
+    const wordLabel = analysis.word || displayWord;
+    const meaning = (analysis.meaning || '').trim();
+    const usage = (analysis.usage || '').trim();
+    const contextualMeaning = (analysis.contextualMeaning || '').trim();
+
+    if (!isExpanded) {
+      const canExpand = Boolean(usage || contextualMeaning);
+      elements.mobileVocabContent.innerHTML = `
+        <div class="vocab-compact-view">
+          <div class="vocab-compact-word">${escapeHtml(wordLabel)}</div>
+          <div class="vocab-compact-meaning">${escapeHtml(meaning || '暂无释义')}</div>
+          ${canExpand ? `
+            <button class="vocab-expand-btn" type="button" data-action="expand-vocab" aria-label="展开更多">
+              <span class="expand-icon" aria-hidden="true">⌄</span>
+              查看详情
+            </button>
+          ` : ''}
+        </div>
+      `;
+      return;
+    }
+
+    elements.mobileVocabContent.innerHTML = `
+      <div class="vocab-expanded-view">
+        <div class="vocab-expanded-header">
+          <div class="vocab-expanded-word">${escapeHtml(wordLabel)}</div>
+          <button class="vocab-collapse-btn" type="button" data-action="collapse-vocab" aria-label="收起">×</button>
+        </div>
+        <div class="vocab-expanded-body">
+          ${meaning ? `
+            <div class="vocab-row">
+              <div class="vocab-label">含义</div>
+              <div class="vocab-value">${escapeHtml(meaning)}</div>
+            </div>
+          ` : ''}
+          ${usage ? `
+            <div class="vocab-row">
+              <div class="vocab-label">用法</div>
+              <div class="vocab-value">${escapeHtml(usage)}</div>
+            </div>
+          ` : ''}
+          ${contextualMeaning ? `
+            <div class="vocab-row">
+              <div class="vocab-label">上下文含义</div>
+              <div class="vocab-value">${escapeHtml(contextualMeaning)}</div>
+            </div>
+          ` : ''}
+          ${(!meaning && !usage && !contextualMeaning) ? `<p class="empty-state">暂无可显示内容</p>` : ''}
+        </div>
+      </div>
+    `;
+  }
+
+  function setupMobileSheetPositionTracking() {
+    if (!canUseMobileVocabUi()) return;
+
+    window.addEventListener('resize', () => {
+      ensureVocabUiState();
+      if (state.vocabUi.sheetState !== 'open') return;
+      applyMobileVocabSheetPosition();
+    }, { passive: true });
   }
 
   function hideMobilePeekPill() {
@@ -79,6 +243,8 @@ export function createVocabPanel({
   function openMobileVocabSheet({ reason = 'manual' } = {}) {
     ensureVocabUiState();
     state.vocabUi.sheetState = 'open';
+    state.vocabUi.isExpanded = false;
+    state.vocabUi.expandedSelectionId = null;
     state.vocabUi.peekPillState = 'hidden';
     hideMobilePeekPill();
     renderVocabularyPanel();
@@ -87,6 +253,8 @@ export function createVocabPanel({
   function closeMobileVocabSheet({ clearSelection = true } = {}) {
     ensureVocabUiState();
     state.vocabUi.sheetState = 'closed';
+    state.vocabUi.isExpanded = false;
+    state.vocabUi.expandedSelectionId = null;
     state.vocabUi.autoOpenCandidateSelectionId = null;
     if (state.vocabUi.autoOpenTimer) {
       clearTimeout(state.vocabUi.autoOpenTimer);
@@ -95,6 +263,7 @@ export function createVocabPanel({
     hideMobilePeekPill();
 
     if (elements.mobileVocabOverlay) elements.mobileVocabOverlay.classList.remove('active');
+    clearMobileVocabSheetPosition();
 
     if (clearSelection) {
       state.selectedWord = null;
@@ -544,6 +713,25 @@ export function createVocabPanel({
     if (!inDesktop && !inMobile) return;
 
     const action = actionEl.dataset.action;
+
+    if (inMobile && action === 'expand-vocab') {
+      ensureVocabUiState();
+      state.vocabUi.isExpanded = true;
+      state.vocabUi.expandedSelectionId = state.selectedWordSelectionId || null;
+      renderMobileVocabSheetContent();
+      applyMobileVocabSheetPosition();
+      return;
+    }
+
+    if (inMobile && action === 'collapse-vocab') {
+      ensureVocabUiState();
+      state.vocabUi.isExpanded = false;
+      state.vocabUi.expandedSelectionId = null;
+      renderMobileVocabSheetContent();
+      applyMobileVocabSheetPosition();
+      return;
+    }
+
     if (action === 'filter') {
       state.vocabFilter = actionEl.dataset.filter || WORD_STATUSES.LEARNING;
       renderVocabularyPanel();
@@ -744,10 +932,12 @@ export function createVocabPanel({
     if (elements.mobileVocabContent && elements.mobileVocabOverlay) {
       const shouldShowSheet = Boolean(state.selectedWord && isMobile && state.vocabUi.sheetState === 'open');
       if (shouldShowSheet) {
-        elements.mobileVocabContent.innerHTML = html;
+        applyMobileVocabSheetPosition();
+        renderMobileVocabSheetContent();
         elements.mobileVocabOverlay.classList.add('active');
       } else {
         elements.mobileVocabOverlay.classList.remove('active');
+        clearMobileVocabSheetPosition();
       }
     }
 
@@ -781,6 +971,7 @@ export function createVocabPanel({
 
   setupMobileScrollTracking();
   setupMobilePeekPillControls();
+  setupMobileSheetPositionTracking();
 
   return {
     setApplyWordStatusesToContainer,

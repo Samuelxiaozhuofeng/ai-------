@@ -129,10 +129,22 @@
     padding: var(--spacing-md);
     transform: translateY(100%);
     transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-    max-height: 70vh;
+    max-height: var(--sheet-max-height, 70vh);
     display: flex;
     flex-direction: column;
     box-shadow: 0 -10px 25px rgba(0, 0, 0, 0.1);
+  }
+
+  .mobile-vocab-sheet[data-position="top"] {
+    top: 0;
+    bottom: auto;
+    border-radius: var(--radius-xl);
+    transform: translateY(-100%);
+    box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1);
+  }
+
+  .mobile-vocab-sheet[data-position="top"] .sheet-handle {
+    display: none;
   }
 
   .mobile-vocab-overlay.active .mobile-vocab-sheet,
@@ -174,6 +186,147 @@
     display: inline-flex;
     align-items: center;
     gap: 6px;
+  }
+
+  /* Mobile Vocab Sheet (Compact / Expanded) */
+  .mobile-vocab-sheet--compact {
+    max-height: min(var(--sheet-max-height, 70vh), 220px);
+  }
+
+  .mobile-vocab-sheet--compact .mobile-sheet-header {
+    display: none;
+  }
+
+  .mobile-vocab-sheet--compact .sheet-handle {
+    margin-bottom: var(--spacing-sm);
+  }
+
+  .mobile-vocab-sheet--compact .sheet-content {
+    flex: 0 1 auto;
+    overflow: hidden;
+  }
+
+  .mobile-vocab-sheet .vocab-compact-view {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-sm);
+    padding: var(--spacing-xs) 0;
+  }
+
+  .mobile-vocab-sheet .vocab-compact-word {
+    font-size: 22px;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+    color: var(--text-primary);
+  }
+
+  .mobile-vocab-sheet .vocab-compact-meaning {
+    font-size: 15px;
+    line-height: 1.5;
+    color: var(--text-primary);
+    display: -webkit-box;
+    -webkit-line-clamp: 3;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+
+  .mobile-vocab-sheet .vocab-compact-status,
+  .mobile-vocab-sheet .vocab-compact-empty {
+    font-size: 14px;
+    color: var(--text-secondary);
+  }
+
+  .mobile-vocab-sheet .vocab-expand-btn {
+    width: 100%;
+    padding: 8px 10px;
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border-default);
+    border-radius: var(--radius-md);
+    font-size: 13px;
+    color: var(--text-secondary);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+  }
+
+  .mobile-vocab-sheet .vocab-expand-btn:active {
+    transform: translateY(1px);
+  }
+
+  .mobile-vocab-sheet .expand-icon {
+    font-size: 16px;
+    line-height: 1;
+  }
+
+  .mobile-vocab-sheet--expanded {
+    max-height: var(--sheet-max-height, 60vh);
+  }
+
+  .mobile-vocab-sheet .vocab-expanded-view {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-sm);
+    padding: var(--spacing-xs) 0;
+  }
+
+  .mobile-vocab-sheet .vocab-expanded-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--spacing-sm);
+    padding-bottom: var(--spacing-sm);
+    border-bottom: 1px solid var(--border-default);
+  }
+
+  .mobile-vocab-sheet .vocab-expanded-word {
+    font-size: 20px;
+    font-weight: 700;
+    color: var(--text-primary);
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .mobile-vocab-sheet .vocab-collapse-btn {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    border: 0;
+    background: transparent;
+    font-size: 24px;
+    line-height: 1;
+    color: var(--text-secondary);
+    flex-shrink: 0;
+  }
+
+  .mobile-vocab-sheet .vocab-expanded-body {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-sm);
+  }
+
+  .mobile-vocab-sheet .vocab-row {
+    display: grid;
+    grid-template-columns: 90px 1fr;
+    gap: var(--spacing-sm);
+    align-items: start;
+  }
+
+  .mobile-vocab-sheet .vocab-label {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-secondary);
+    padding-top: 2px;
+  }
+
+  .mobile-vocab-sheet .vocab-value {
+    font-size: 15px;
+    line-height: 1.5;
+    color: var(--text-primary);
+    white-space: pre-wrap;
+    word-break: break-word;
   }
 
   /* Mobile Vocab Peek Pill */
