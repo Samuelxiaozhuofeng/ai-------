@@ -119,26 +119,50 @@ function readRepeatOutcome(repeatResult, ratingValue) {
 }
 
 function formatIntervalDays(days, due, now) {
+  // Calculate total minutes from days or from due date difference
+  let totalMinutes = 0;
+
   if (typeof days === 'number' && Number.isFinite(days)) {
-    if (days < 1) return '<1d';
-    if (days === 1) return '1d';
-    if (days < 7) return `${Math.round(days)}d`;
-    const weeks = Math.round(days / 7);
-    return `${weeks}w`;
-  }
-
-  if (due instanceof Date && now instanceof Date) {
+    totalMinutes = days * 24 * 60;
+  } else if (due instanceof Date && now instanceof Date) {
     const ms = Math.max(0, due.getTime() - now.getTime());
-    const hours = ms / (1000 * 60 * 60);
-    if (hours < 1) return '<1h';
-    if (hours < 24) return `${Math.round(hours)}h`;
-    const d = hours / 24;
-    if (d < 7) return `${Math.round(d)}d`;
-    const w = d / 7;
-    return `${Math.round(w)}w`;
+    totalMinutes = ms / (1000 * 60);
+  } else {
+    return '';
   }
 
-  return '';
+  // Format with precise time units
+  if (totalMinutes < 1) {
+    return '1分钟';
+  }
+  if (totalMinutes < 60) {
+    return `${Math.round(totalMinutes)}分钟`;
+  }
+
+  const hours = totalMinutes / 60;
+  if (hours < 24) {
+    const h = Math.floor(hours);
+    const m = Math.round((hours - h) * 60);
+    if (m === 0 || h >= 4) {
+      return `${Math.round(hours)}小时`;
+    }
+    return `${h}小时${m}分`;
+  }
+
+  const totalDays = hours / 24;
+  if (totalDays < 30) {
+    const d = Math.floor(totalDays);
+    if (d === 0) return '1天';
+    return `${d}天`;
+  }
+
+  const months = totalDays / 30;
+  if (months < 12) {
+    return `${Math.round(months)}个月`;
+  }
+
+  const years = months / 12;
+  return `${years.toFixed(1)}年`;
 }
 
 function normalizeAnalysisFields(analysis) {

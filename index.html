@@ -16,17 +16,17 @@
 <body>
   <div class="app-container">
     <!-- Bookshelf View (Default) -->
-	    <section class="bookshelf-view" id="bookshelfView">
-	      <header class="bookshelf-header">
-	        <div class="header-left">
-	          <h1 class="logo"><span class="icon">📚</span> <span class="mobile-hide">我的书架</span></h1>
-	          <div class="language-tabs" id="languageTabs">
-	            <button class="language-tab active" data-language="en" id="languageTabEn">英语</button>
-	            <button class="language-tab" data-language="es" id="languageTabEs">西班牙语</button>
-	            <button class="language-tab" data-language="ja" id="languageTabJa">日语</button>
-	          </div>
-	        </div>
-	        <div class="header-right">
+    <section class="bookshelf-view" id="bookshelfView">
+      <header class="bookshelf-header">
+        <div class="header-left">
+          <h1 class="logo"><span class="icon">📚</span> <span class="mobile-hide">我的书架</span></h1>
+          <div class="language-tabs" id="languageTabs">
+            <button class="language-tab active" data-language="en" id="languageTabEn">英语</button>
+            <button class="language-tab" data-language="es" id="languageTabEs">西班牙语</button>
+            <button class="language-tab" data-language="ja" id="languageTabJa">日语</button>
+          </div>
+        </div>
+        <div class="header-right">
           <div class="view-toggle">
             <button class="btn btn-ghost view-btn active" id="gridViewBtn" title="网格视图">
               <span class="icon">▦</span>
@@ -42,40 +42,40 @@
           <button class="btn btn-secondary" id="reviewBtn" title="开始复习">
             <span class="icon">🗓️</span> 复习
           </button>
-	          <div class="sync-indicator" id="syncIndicatorShelf" title="Sync status">
-	            <span class="sync-dot"></span> <span class="sync-label mobile-hide">Offline</span>
-	          </div>
-	          <button class="btn btn-secondary" id="authBtn" title="登录 / 注册">
-	            <span class="auth-icon">🔐</span>
-	            <span class="auth-label">登录</span>
-	          </button>
-	          <button class="btn btn-ghost" id="settingsBtn" title="设置" aria-label="设置">
-	            <span class="icon">⚙️</span>
-	          </button>
-	          <button class="btn btn-ghost" id="themeToggleBtnShelf" title="Toggle theme">
-	            <span class="icon" id="themeIconShelf">🌙</span>
-	          </button>
-	          <button class="btn btn-ghost" id="mobileMenuBtn" title="菜单" aria-label="菜单">
-	            <span class="icon">☰</span>
-	          </button>
-	          <button class="btn btn-primary" id="importBookBtn">
-	            <span class="icon">📁</span> 上传 EPUB
-	          </button>
-	        </div>
-	      </header>
+          <div class="sync-indicator" id="syncIndicatorShelf" title="Sync status">
+            <span class="sync-dot"></span> <span class="sync-label mobile-hide">Offline</span>
+          </div>
+          <button class="btn btn-secondary" id="authBtn" title="登录 / 注册">
+            <span class="auth-icon">🔐</span>
+            <span class="auth-label">登录</span>
+          </button>
+          <button class="btn btn-ghost" id="settingsBtn" title="设置" aria-label="设置">
+            <span class="icon">⚙️</span>
+          </button>
+          <button class="btn btn-ghost" id="themeToggleBtnShelf" title="Toggle theme">
+            <span class="icon" id="themeIconShelf">🌙</span>
+          </button>
+          <button class="btn btn-ghost" id="mobileMenuBtn" title="菜单" aria-label="菜单">
+            <span class="icon">☰</span>
+          </button>
+          <button class="btn btn-primary" id="importBookBtn">
+            <span class="icon">📁</span> 上传 EPUB
+          </button>
+        </div>
+      </header>
 
-	      <!-- Mobile header dropdown menu -->
-	      <div class="context-menu" id="mobileHeaderMenu" role="menu" aria-label="菜单">
-	        <button class="context-menu-item" data-action="import">
-	          <span class="icon">📁</span> <span class="menu-label">上传 EPUB</span>
-	        </button>
-	        <button class="context-menu-item" data-action="settings">
-	          <span class="icon">⚙️</span> <span class="menu-label">设置</span>
-	        </button>
-	        <button class="context-menu-item" data-action="auth" id="mobileAuthMenuItem">
-	          <span class="icon">🔐</span> <span class="menu-label">登录 / 账户</span>
-	        </button>
-	      </div>
+      <!-- Mobile header dropdown menu -->
+      <div class="context-menu" id="mobileHeaderMenu" role="menu" aria-label="菜单">
+        <button class="context-menu-item" data-action="import">
+          <span class="icon">📁</span> <span class="menu-label">上传 EPUB</span>
+        </button>
+        <button class="context-menu-item" data-action="settings">
+          <span class="icon">⚙️</span> <span class="menu-label">设置</span>
+        </button>
+        <button class="context-menu-item" data-action="auth" id="mobileAuthMenuItem">
+          <span class="icon">🔐</span> <span class="menu-label">登录 / 账户</span>
+        </button>
+      </div>
 
       <div class="bookshelf-content">
         <div class="books-container" id="booksContainer">
@@ -90,7 +90,7 @@
           </div>
         </div>
       </div>
-      
+
       <!-- Mobile Floating Action Button for Review -->
       <button class="fab-btn" id="mobileReviewBtn" title="开始复习" aria-label="开始复习">
         <span class="icon">🗓️</span>
@@ -99,7 +99,7 @@
     </section>
 
     <!-- Reader View (Hidden by default) -->
-	    <section class="reader-view" id="readerView" style="display: none;">
+    <section class="reader-view" id="readerView" style="display: none;">
       <!-- Header -->
       <header class="app-header">
         <div class="header-left">
@@ -111,18 +111,18 @@
           </button>
           <span class="book-title" id="bookTitle">No book loaded</span>
         </div>
-		        <div class="header-right">
-		          <div class="sync-indicator" id="syncIndicator" title="Sync status">
-		            <span class="sync-dot"></span> <span class="sync-label mobile-hide">Offline</span>
-		          </div>
-		          <button class="btn btn-ghost" id="typographyBtn" title="阅读排版" aria-label="阅读排版">
-		            <span class="icon">Aa</span>
-		          </button>
-		          <button class="btn btn-ghost" id="themeToggleBtn" title="Toggle theme">
-		            <span class="icon" id="themeIcon">🌙</span>
-		          </button>
-		        </div>
-		      </header>
+        <div class="header-right">
+          <div class="sync-indicator" id="syncIndicator" title="Sync status">
+            <span class="sync-dot"></span> <span class="sync-label mobile-hide">Offline</span>
+          </div>
+          <button class="btn btn-ghost" id="typographyBtn" title="阅读排版" aria-label="阅读排版">
+            <span class="icon">Aa</span>
+          </button>
+          <button class="btn btn-ghost" id="themeToggleBtn" title="Toggle theme">
+            <span class="icon" id="themeIcon">🌙</span>
+          </button>
+        </div>
+      </header>
 
       <!-- Main Content -->
       <main class="main-content">
@@ -183,11 +183,11 @@
               <button class="tab-btn" data-tab="chapter-analysis" id="tabChapterAnalysis">
                 <span>📖</span> Chapter
               </button>
-	              <label class="auto-study-toggle" title="自动加入学习">
-	                <input type="checkbox" id="autoStudyToggle">
-	                <span class="toggle-slider"></span>
-	                <span class="toggle-label">Study</span>
-	              </label>
+              <label class="auto-study-toggle" title="自动加入学习">
+                <input type="checkbox" id="autoStudyToggle">
+                <span class="toggle-slider"></span>
+                <span class="toggle-label">Study</span>
+              </label>
             </div>
           </div>
 
@@ -238,11 +238,11 @@
         <div class="sheet-handle"></div>
         <div class="mobile-sheet-header">
           <span class="sheet-title">词汇分析</span>
-	          <label class="auto-study-toggle mobile-toggle" title="自动加入学习">
-	            <input type="checkbox" id="mobileAutoStudyToggle">
-	            <span class="toggle-slider"></span>
-	            <span class="toggle-label">Auto Study</span>
-	          </label>
+          <label class="auto-study-toggle mobile-toggle" title="自动加入学习">
+            <input type="checkbox" id="mobileAutoStudyToggle">
+            <span class="toggle-slider"></span>
+            <span class="toggle-label">Auto Study</span>
+          </label>
         </div>
         <div class="sheet-content" id="mobileVocabContent">
           <!-- Content will be mirrored from vocab-panel on mobile -->
@@ -252,13 +252,16 @@
 
     <!-- Mobile Chapter Analysis Bottom Sheet -->
     <div class="mobile-chapter-overlay" id="mobileChapterOverlay" aria-hidden="true">
-      <div class="mobile-chapter-sheet" id="mobileChapterSheet" role="dialog" aria-modal="true" aria-label="Chapter Analysis">
+      <div class="mobile-chapter-sheet" id="mobileChapterSheet" role="dialog" aria-modal="true"
+        aria-label="Chapter Analysis">
         <div class="sheet-handle"></div>
         <div class="mobile-sheet-header">
           <span class="sheet-title">章节分析</span>
           <div class="sheet-actions">
-            <button class="btn btn-ghost btn-small" id="mobileChapterAnalysisRefreshBtn" type="button" title="重新分析" aria-label="重新分析">⟳</button>
-            <button class="btn btn-ghost btn-small" id="mobileChapterAnalysisCloseBtn" type="button" title="关闭" aria-label="关闭">✕</button>
+            <button class="btn btn-ghost btn-small" id="mobileChapterAnalysisRefreshBtn" type="button" title="重新分析"
+              aria-label="重新分析">⟳</button>
+            <button class="btn btn-ghost btn-small" id="mobileChapterAnalysisCloseBtn" type="button" title="关闭"
+              aria-label="关闭">✕</button>
           </div>
         </div>
         <div class="sheet-content markdown-body" id="mobileChapterContent">
@@ -289,46 +292,44 @@
           <button class="btn btn-primary" id="reviewFinishBtn">返回书架</button>
         </div>
 
-	          <div class="review-session" id="reviewSession" style="display: none;">
-	          <div class="review-card" id="reviewCard">
-	            <div class="review-word" id="reviewWord">—</div>
-	            <div class="review-body">
-	              <div class="review-row">
-	                <div class="review-label">含义</div>
-	                <div class="review-value" id="reviewMeaning">—</div>
-	              </div>
-	              <div class="review-row">
-	                <div class="review-label">用法</div>
-	                <div class="review-value" id="reviewUsage">—</div>
-	              </div>
-	              <div class="review-row is-context">
-	                <div class="review-label">上下文</div>
-	                <div class="review-value" id="reviewContext">—</div>
-	              </div>
-	              <div class="review-row">
-	                <div class="review-label">上下文含义</div>
-	                <div class="review-value" id="reviewContextualMeaning">—</div>
-	              </div>
-	            </div>
-	          </div>
+        <div class="review-session" id="reviewSession" style="display: none;">
+          <div class="review-card" id="reviewCard">
+            <div class="review-word" id="reviewWord">—</div>
+            <div class="review-body">
+              <div class="review-row">
+                <div class="review-label">含义</div>
+                <div class="review-value" id="reviewMeaning">—</div>
+              </div>
+              <div class="review-row">
+                <div class="review-label">用法</div>
+                <div class="review-value" id="reviewUsage">—</div>
+              </div>
+              <div class="review-row is-context">
+                <div class="review-label">上下文</div>
+                <div class="review-value" id="reviewContext">—</div>
+              </div>
+              <div class="review-row">
+                <div class="review-label">上下文含义</div>
+                <div class="review-value" id="reviewContextualMeaning">—</div>
+              </div>
+            </div>
+          </div>
 
           <button class="btn btn-primary review-show-answer" id="reviewShowAnswerBtn">显示答案 (空格)</button>
 
           <div class="review-actions" id="reviewActions">
-            <button class="btn btn-secondary review-rate-btn" data-rating="again" id="reviewAgainBtn">
-              Again <span class="review-interval" id="reviewAgainInterval"></span>
+            <button class="btn btn-secondary review-rate-btn review-btn-again" data-rating="again" id="reviewAgainBtn">
+              <span class="review-btn-emoji">❌</span>
+              <span class="review-btn-label">忘记</span>
+              <span class="review-interval" id="reviewAgainInterval"></span>
             </button>
-            <button class="btn btn-secondary review-rate-btn" data-rating="hard" id="reviewHardBtn">
-              Hard <span class="review-interval" id="reviewHardInterval"></span>
-            </button>
-            <button class="btn btn-secondary review-rate-btn" data-rating="good" id="reviewGoodBtn">
-              Good <span class="review-interval" id="reviewGoodInterval"></span>
-            </button>
-            <button class="btn btn-secondary review-rate-btn" data-rating="easy" id="reviewEasyBtn">
-              Easy <span class="review-interval" id="reviewEasyInterval"></span>
+            <button class="btn btn-secondary review-rate-btn review-btn-good" data-rating="good" id="reviewGoodBtn">
+              <span class="review-btn-emoji">✅</span>
+              <span class="review-btn-label">记得</span>
+              <span class="review-interval" id="reviewGoodInterval"></span>
             </button>
           </div>
-          <div class="review-hint" id="reviewHint">快捷键: 空格=显示答案 1=Again 2=Hard 3=Good 4=Easy</div>
+          <div class="review-hint" id="reviewHint">快捷键: 空格=显示答案 1=忘记 2/3/4=记得</div>
         </div>
       </main>
     </section>
@@ -436,26 +437,26 @@
 
     <!-- Settings Modal -->
     <div class="modal-overlay" id="settingsModal">
-	      <div class="modal modal-large">
-	        <div class="modal-header">
-	          <h2>⚙️ 设置</h2>
+      <div class="modal modal-large">
+        <div class="modal-header">
+          <h2>⚙️ 设置</h2>
           <button class="btn btn-ghost btn-small" id="closeSettingsBtn">
             ✕
           </button>
         </div>
         <!-- Settings Tabs -->
-	        <div class="settings-tabs">
-	          <button class="settings-tab active" data-settings-tab="ai" id="settingsTabAI">
-	            🤖 AI 设置
-	          </button>
-	          <button class="settings-tab" data-settings-tab="reading" id="settingsTabReading">
-	            📖 阅读
-	          </button>
-	          <button class="settings-tab" data-settings-tab="sync" id="settingsTabSync">
-	            🔄 同步
-	          </button>
-	          <button class="settings-tab" data-settings-tab="fsrs" id="settingsTabFSRS">
-	            🧠 FSRS
+        <div class="settings-tabs">
+          <button class="settings-tab active" data-settings-tab="ai" id="settingsTabAI">
+            🤖 AI 设置
+          </button>
+          <button class="settings-tab" data-settings-tab="reading" id="settingsTabReading">
+            📖 阅读
+          </button>
+          <button class="settings-tab" data-settings-tab="sync" id="settingsTabSync">
+            🔄 同步
+          </button>
+          <button class="settings-tab" data-settings-tab="fsrs" id="settingsTabFSRS">
+            🧠 FSRS
           </button>
         </div>
         <div class="modal-body">
@@ -527,23 +528,25 @@
             </div>
 
             <div class="form-group">
-              <label for="readingLineHeight">行高 <span class="slider-value" id="readingLineHeightValue">1.6</span></label>
+              <label for="readingLineHeight">行高 <span class="slider-value"
+                  id="readingLineHeightValue">1.6</span></label>
               <input type="range" id="readingLineHeight" min="1.4" max="2.0" step="0.1" value="1.6" />
             </div>
 
             <div class="form-group">
               <label>预览</label>
-              <div id="readingPreview" style="padding: var(--spacing-md); border-radius: var(--radius-md); background: var(--bg-secondary); border: 1px solid var(--border-subtle); font-family: var(--reader-font-family); font-size: var(--reader-font-size); line-height: var(--reader-line-height); color: var(--text-primary);">
+              <div id="readingPreview"
+                style="padding: var(--spacing-md); border-radius: var(--radius-md); background: var(--bg-secondary); border: 1px solid var(--border-subtle); font-family: var(--reader-font-family); font-size: var(--reader-font-size); line-height: var(--reader-line-height); color: var(--text-primary);">
                 The quick brown fox jumps over the lazy dog. / El veloz murciélago hindú comía feliz cardillo y kiwi.
               </div>
-	            </div>
-	          </div>
+            </div>
+          </div>
 
-	          <!-- Sync Settings Tab Content -->
-	          <div class="settings-tab-content" id="syncSettingsContent">
-	            <div class="form-group">
-	              <label for="backendUrl">Backend URL</label>
-	              <input type="url" id="backendUrl" placeholder="http://localhost:8000" class="input" />
+          <!-- Sync Settings Tab Content -->
+          <div class="settings-tab-content" id="syncSettingsContent">
+            <div class="form-group">
+              <label for="backendUrl">Backend URL</label>
+              <input type="url" id="backendUrl" placeholder="http://localhost:8000" class="input" />
             </div>
             <div class="form-group">
               <label class="checkbox-row">
@@ -697,10 +700,12 @@
           </div>
           <div class="form-group">
             <label for="authPassword">密码</label>
-            <input type="password" id="authPassword" class="input" autocomplete="current-password" placeholder="••••••••" />
+            <input type="password" id="authPassword" class="input" autocomplete="current-password"
+              placeholder="••••••••" />
           </div>
           <p class="text-error" id="authError" style="display: none;"></p>
-          <div id="authSwitchRow" style="margin-top: 10px; color: var(--text-secondary); font-size: var(--font-size-sm);">
+          <div id="authSwitchRow"
+            style="margin-top: 10px; color: var(--text-secondary); font-size: var(--font-size-sm);">
             <span id="authSwitchHint">没有账号？</span>
             <button class="btn btn-ghost btn-small" id="authSwitchBtn" type="button">去注册</button>
           </div>

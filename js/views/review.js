@@ -12,7 +12,7 @@ let isReviewAnswerShown = false;
 
 /** @type {{ backToBookshelf: () => void }} */
 let navigation = {
-  backToBookshelf: () => {}
+  backToBookshelf: () => { }
 };
 
 /**
@@ -51,14 +51,14 @@ export function createReviewController(elements) {
     if (elements.reviewShowAnswerBtn) {
       elements.reviewShowAnswerBtn.style.display = isShown ? 'none' : '';
     }
-    const rateButtons = [elements.reviewAgainBtn, elements.reviewHardBtn, elements.reviewGoodBtn, elements.reviewEasyBtn];
+    const rateButtons = [elements.reviewAgainBtn, elements.reviewGoodBtn];
     rateButtons.filter(Boolean).forEach((btn) => {
       btn.disabled = !isShown;
     });
     if (elements.reviewHint) {
       elements.reviewHint.textContent = isShown
-        ? '快捷键: 1=Again 2=Hard 3=Good 4=Easy'
-        : '快捷键: 空格=显示答案 1=Again 2=Hard 3=Good 4=Easy';
+        ? '快捷键: 1=忘记 2/3/4=记得'
+        : '快捷键: 空格=显示答案 1=忘记 2/3/4=记得';
     }
   }
 
@@ -86,9 +86,7 @@ export function createReviewController(elements) {
 
     const intervals = await previewNextIntervals(currentReviewItem, new Date());
     setReviewText(elements.reviewAgainInterval, intervals.again, '');
-    setReviewText(elements.reviewHardInterval, intervals.hard, '');
     setReviewText(elements.reviewGoodInterval, intervals.good, '');
-    setReviewText(elements.reviewEasyInterval, intervals.easy, '');
   }
 
   async function loadReviewSession() {
@@ -165,16 +163,9 @@ export function createReviewController(elements) {
       void submitRating('again');
       return true;
     }
-    if (event.key === '2') {
-      void submitRating('hard');
-      return true;
-    }
-    if (event.key === '3') {
+    // Pass/Fail mode: 2, 3, 4 all map to 'good'
+    if (event.key === '2' || event.key === '3' || event.key === '4') {
       void submitRating('good');
-      return true;
-    }
-    if (event.key === '4') {
-      void submitRating('easy');
       return true;
     }
     return false;
@@ -187,7 +178,7 @@ export function createReviewController(elements) {
     elements.reviewFinishBtn?.addEventListener('click', navigation.backToBookshelf);
     elements.reviewShowAnswerBtn?.addEventListener('click', () => revealReviewAnswer());
 
-    [elements.reviewAgainBtn, elements.reviewHardBtn, elements.reviewGoodBtn, elements.reviewEasyBtn]
+    [elements.reviewAgainBtn, elements.reviewGoodBtn]
       .filter(Boolean)
       .forEach((btn) => {
         btn.addEventListener('click', () => submitRating(btn.dataset.rating));
