@@ -56,7 +56,7 @@ export function createSettingsModalController(elements) {
 
   function normalizeLineHeight(value) {
     let next = Number(value);
-    if (!Number.isFinite(next)) next = 1.6;
+    if (!Number.isFinite(next)) next = 1.9;
     next = Math.max(1.4, Math.min(2.0, next));
     next = Math.round(next * 10) / 10;
     return next;

@@ -130,44 +130,112 @@ export function createReaderController(elements) {
     elements.readingContent.addEventListener('mouseup', wordHighlighter.handleReadingSelectionEnd);
     elements.readingContent.addEventListener('touchend', wordHighlighter.handleReadingSelectionEnd);
 
+    // Mobile phrase selection (long-press + drag across words).
+    elements.readingContent.addEventListener('touchstart', wordHighlighter.handleReadingTouchStart, { passive: true });
+    elements.readingContent.addEventListener('touchmove', wordHighlighter.handleReadingTouchMove, { passive: true });
+    elements.readingContent.addEventListener('touchend', wordHighlighter.handleReadingTouchEnd, { passive: true });
+    elements.readingContent.addEventListener('touchcancel', wordHighlighter.resetPhraseSelection, { passive: true });
+
     // Swipe Gesture Support
+    let swipeTouchId = null;
     let touchStartX = 0;
-    let touchEndX = 0;
     let touchStartY = 0;
+    let touchStartAt = 0;
+    let touchEndX = 0;
     let touchEndY = 0;
-    const swipeThreshold = 50; // pixels
-    const verticalTolerance = 20; // 垂直滑动容忍度（超过则视为滚动/选择意图）
+    let swipeEligible = false;
+
+    const swipeThreshold = 90; // pixels (reduce accidental flips)
+    const verticalTolerance = 28; // pixels (scroll/select intent)
+    const fastSwipeMs = 150;
+    const slowSwipeMs = 220;
+    const mobileEdgeZoneRatio = 0.3; // only accept swipes from outer 30% edges on mobile
+
+    function isMobileViewport() {
+      return window.innerWidth <= 768;
+    }
+
+    function isEdgeStart(clientX) {
+      const w = window.innerWidth || 0;
+      if (!w) return false;
+      const edge = w * mobileEdgeZoneRatio;
+      return clientX <= edge || clientX >= (w - edge);
+    }
+
+    function getTouchById(list, touchId) {
+      if (!list || touchId == null) return null;
+      for (let i = 0; i < list.length; i++) {
+        const touch = list[i];
+        if (touch?.identifier === touchId) return touch;
+      }
+      return null;
+    }
 
     elements.readingContent.addEventListener('touchstart', (e) => {
-      touchStartX = e.changedTouches[0].screenX;
-      touchStartY = e.changedTouches[0].screenY;
+      if (!state.isPageFlipMode) return;
+      if (!e.touches || e.touches.length !== 1) return;
+
+      const touch = e.touches[0];
+      swipeTouchId = touch.identifier;
+      touchStartX = touch.clientX;
+      touchStartY = touch.clientY;
+      touchStartAt = Date.now();
+
+      // On mobile, only edge-start gestures are considered page flips.
+      swipeEligible = !isMobileViewport() || isEdgeStart(touch.clientX);
+      if (!swipeEligible) swipeTouchId = null;
+    }, { passive: true });
+
+    elements.readingContent.addEventListener('touchmove', (e) => {
+      if (!state.isPageFlipMode) return;
+      if (!swipeEligible || swipeTouchId == null) return;
+
+      const touch = getTouchById(e.touches, swipeTouchId);
+      if (!touch) return;
+      touchEndX = touch.clientX;
+      touchEndY = touch.clientY;
     }, { passive: true });
 
     elements.readingContent.addEventListener('touchend', (e) => {
       if (!state.isPageFlipMode) return;
+      if (swipeTouchId == null) return;
 
-      touchEndX = e.changedTouches[0].screenX;
-      touchEndY = e.changedTouches[0].screenY;
+      const touch = getTouchById(e.changedTouches, swipeTouchId);
+      const wasEligible = swipeEligible;
+      swipeTouchId = null;
+      swipeEligible = false;
+      if (!touch) return;
+      if (!wasEligible) return;
+
+      // Suppress page flips during/after custom phrase selection or native selection.
+      if (Date.now() < (state.suppressPageSwipeUntil || 0)) return;
+      if (state.isPhraseSelecting) return;
+
+      const durationMs = Date.now() - touchStartAt;
+      if (durationMs > slowSwipeMs) return;
+
+      touchEndX = touch.clientX;
+      touchEndY = touch.clientY;
       const diffX = touchEndX - touchStartX;
       const diffY = touchEndY - touchStartY;
 
-      // 1) 垂直滑动检测：用户可能在滚动内容，而不是翻页
+      // 1) Vertical intent (scroll/select).
       if (Math.abs(diffY) > verticalTolerance) return;
 
-      // 2) 文本选择检测：用户正在选择文本时不应触发翻页
+      // 2) Active native selection should never page-flip.
       const selection = window.getSelection?.();
-      const hasTextSelection = Boolean(selection && selection.toString().length > 0);
+      const hasTextSelection = Boolean(selection && !selection.isCollapsed && selection.toString().trim());
       if (hasTextSelection) return;
 
-      // 3) 增强判断：仅当水平滑动明显时才翻页
-      if (Math.abs(diffX) > swipeThreshold) {
-        if (diffX > 0) {
-          // Swipe Right -> Previous Page
-          pagination.goToPreviousPage();
-        } else {
-          // Swipe Left -> Next Page
-          pagination.goToNextPage();
-        }
+      // 3) Require a clearly horizontal swipe.
+      const effectiveSwipeThreshold = durationMs <= fastSwipeMs ? swipeThreshold : 120;
+      if (Math.abs(diffX) < effectiveSwipeThreshold) return;
+      if (Math.abs(diffX) < Math.abs(diffY) * 2) return;
+
+      if (diffX > 0) {
+        pagination.goToPreviousPage();
+      } else {
+        pagination.goToNextPage();
       }
     }, { passive: true });
 

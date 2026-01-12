@@ -38,7 +38,7 @@ const DEFAULT_LAYOUT = {
 const DEFAULT_READING_SETTINGS = {
   fontPreset: 'serif', // 'serif' | 'sans' | 'system'
   fontSize: 20, // px
-  lineHeight: 1.6
+  lineHeight: 1.9
 };
 
 function normalizeReadingSettings(raw) {

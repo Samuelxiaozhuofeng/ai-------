@@ -12,6 +12,213 @@ export function createWordHighlighter({
   renderVocabularyPanel,
   switchTab
 }) {
+  const PHRASE_LONG_PRESS_MS = 320;
+  const PHRASE_MOVE_CANCEL_PX = 12;
+  const PHRASE_HIGHLIGHT_CLEAR_MS = 1200;
+  const WORD_DOUBLE_TAP_MS = 280;
+
+  /** @type {HTMLElement | null} */
+  let lastTappedWordEl = null;
+  let lastTappedAt = 0;
+
+  const phraseSelection = {
+    active: false,
+    touchId: null,
+    startX: 0,
+    startY: 0,
+    paragraphEl: /** @type {HTMLParagraphElement | null} */ (null),
+    words: /** @type {HTMLElement[]} */ ([]),
+    startIndex: -1,
+    endIndex: -1,
+    highlightMin: -1,
+    highlightMax: -1,
+    longPressTimer: /** @type {number | null} */ (null),
+    clearTimer: /** @type {number | null} */ (null)
+  };
+
+  function getTouchById(list, touchId) {
+    if (!list || touchId == null) return null;
+    // TouchList isn't a real array on iOS.
+    for (let i = 0; i < list.length; i++) {
+      const touch = list[i];
+      if (touch?.identifier === touchId) return touch;
+    }
+    return null;
+  }
+
+  function clearPhraseTimers() {
+    if (phraseSelection.longPressTimer != null) {
+      clearTimeout(phraseSelection.longPressTimer);
+      phraseSelection.longPressTimer = null;
+    }
+    if (phraseSelection.clearTimer != null) {
+      clearTimeout(phraseSelection.clearTimer);
+      phraseSelection.clearTimer = null;
+    }
+  }
+
+  function clearPhraseHighlight() {
+    if (!phraseSelection.paragraphEl || phraseSelection.highlightMin < 0 || phraseSelection.highlightMax < 0) return;
+    for (let i = phraseSelection.highlightMin; i <= phraseSelection.highlightMax; i++) {
+      phraseSelection.words[i]?.classList.remove('word-phrase-selected');
+    }
+    phraseSelection.highlightMin = -1;
+    phraseSelection.highlightMax = -1;
+  }
+
+  function resetPhraseSelection() {
+    clearPhraseTimers();
+    clearPhraseHighlight();
+    phraseSelection.active = false;
+    phraseSelection.touchId = null;
+    phraseSelection.paragraphEl = null;
+    phraseSelection.words = [];
+    phraseSelection.startIndex = -1;
+    phraseSelection.endIndex = -1;
+    state.isPhraseSelecting = false;
+    elements.readerView?.classList.remove('is-phrase-selecting');
+  }
+
+  function updatePhraseHighlightRange(nextMin, nextMax) {
+    if (!phraseSelection.paragraphEl) return;
+    if (nextMin < 0 || nextMax < 0) return;
+    if (nextMin > nextMax) return;
+
+    const prevMin = phraseSelection.highlightMin;
+    const prevMax = phraseSelection.highlightMax;
+
+    if (prevMin >= 0 && prevMax >= 0) {
+      for (let i = prevMin; i <= prevMax; i++) {
+        if (i < nextMin || i > nextMax) phraseSelection.words[i]?.classList.remove('word-phrase-selected');
+      }
+      for (let i = nextMin; i <= nextMax; i++) {
+        if (i < prevMin || i > prevMax) phraseSelection.words[i]?.classList.add('word-phrase-selected');
+      }
+    } else {
+      for (let i = nextMin; i <= nextMax; i++) {
+        phraseSelection.words[i]?.classList.add('word-phrase-selected');
+      }
+    }
+
+    phraseSelection.highlightMin = nextMin;
+    phraseSelection.highlightMax = nextMax;
+  }
+
+  function beginPhraseSelection(wordEl, touchId) {
+    const paragraphEl = wordEl?.closest?.('p') || null;
+    if (!paragraphEl) return;
+
+    const words = Array.from(paragraphEl.querySelectorAll('.word'));
+    const startIndex = words.indexOf(wordEl);
+    if (startIndex < 0) return;
+
+    resetPhraseSelection();
+
+    phraseSelection.active = true;
+    phraseSelection.touchId = touchId;
+    phraseSelection.paragraphEl = paragraphEl;
+    phraseSelection.words = words;
+    phraseSelection.startIndex = startIndex;
+    phraseSelection.endIndex = startIndex;
+
+    state.isPhraseSelecting = true;
+    elements.readerView?.classList.add('is-phrase-selecting');
+
+    // Prevent the follow-up click from selecting a single word.
+    state.suppressWordClickUntil = Date.now() + 800;
+    state.suppressPageSwipeUntil = Date.now() + 1200;
+
+    updatePhraseHighlightRange(startIndex, startIndex);
+    navigator.vibrate?.(10);
+  }
+
+  function commitPhraseSelection() {
+    if (!phraseSelection.active || !phraseSelection.paragraphEl) return;
+
+    const start = Math.min(phraseSelection.startIndex, phraseSelection.endIndex);
+    const end = Math.max(phraseSelection.startIndex, phraseSelection.endIndex);
+    if (start < 0 || end < 0) return;
+
+    const startEl = phraseSelection.words[start];
+    const endEl = phraseSelection.words[end];
+    if (!startEl || !endEl) return;
+
+    const range = document.createRange();
+    range.setStartBefore(startEl);
+    range.setEndAfter(endEl);
+
+    const selectedText = collapseWhitespace(range.toString());
+    const didSelect = handleProcessedSelection(range, selectedText);
+
+    if (didSelect) navigator.vibrate?.(5);
+
+    // Keep highlight very briefly for feedback, then clear for a cleaner page.
+    clearPhraseTimers();
+    phraseSelection.clearTimer = window.setTimeout(() => clearPhraseHighlight(), PHRASE_HIGHLIGHT_CLEAR_MS);
+    phraseSelection.active = false;
+    state.isPhraseSelecting = false;
+    elements.readerView?.classList.remove('is-phrase-selecting');
+  }
+
+  function handleProcessedSelection(range, selectedText) {
+    if (!selectedText) return false;
+    if (selectedText.length > 80) return false;
+    if (/\n/.test(selectedText)) return false;
+
+    if (!range) return false;
+
+    const anchorEl = range.startContainer?.nodeType === Node.TEXT_NODE ? range.startContainer.parentNode : range.startContainer;
+    const focusEl = range.endContainer?.nodeType === Node.TEXT_NODE ? range.endContainer.parentNode : range.endContainer;
+    if (!elements.readingContent.contains(anchorEl) || !elements.readingContent.contains(focusEl)) return false;
+
+    const context = extractContextForRange(range);
+    if (!context) return false;
+
+    const normalized = normalizeTextToKey(selectedText);
+    if (!normalized) return false;
+
+    state.suppressWordClickUntil = Date.now() + 350;
+    state.suppressPageSwipeUntil = Date.now() + 600;
+
+    state.selectedWordSelectionId = (state.selectedWordSelectionId || 0) + 1;
+    state.selectedWordSelectedAt = Date.now();
+
+    if (state.selectedWordEl) state.selectedWordEl.classList.remove('word-selected', 'word-processing');
+    state.selectedWordEl = null;
+
+    state.selectedWord = normalized;
+    state.selectedWordDisplay = selectedText;
+    state.selectedWordContext = context;
+    state.selectedWordAnalysis = getCachedAnalysisForSelectedWord(state.selectedWord) || null;
+    state.isSelectedAnalysisLoading = false;
+
+    state.selectedWord.split(' ').forEach((part) => {
+      const token = normalizeWord(part);
+      if (token) state.clickedWordsOnPage.add(token);
+    });
+
+    switchTab('vocab-analysis');
+
+    queueSelectedWordAnalysis({
+      debounceMs: 0,
+      requestId: state.selectedWordSelectionId,
+      autoOpenOnReady: true
+    });
+
+    renderVocabularyPanel();
+    return true;
+  }
+
+  function selectWordText(wordEl) {
+    const selection = window.getSelection?.();
+    if (!selection) return false;
+    const range = document.createRange();
+    range.selectNodeContents(wordEl);
+    selection.removeAllRanges();
+    selection.addRange(range);
+    return true;
+  }
+
   function applyWordStatusesToContainer(container) {
     container.querySelectorAll('.word').forEach((el) => {
       const normalizedWord = el.dataset.word || '';
@@ -29,6 +236,22 @@ export function createWordHighlighter({
 
     const target = event.target.closest?.('.word');
     if (!target || !elements.readingContent.contains(target)) return;
+
+    const now = Date.now();
+    const isDoubleTap = lastTappedWordEl === target && (now - lastTappedAt) <= WORD_DOUBLE_TAP_MS;
+    lastTappedWordEl = target;
+    lastTappedAt = now;
+
+    // Double tap: use native selection highlight for clearer feedback (and larger handles on mobile).
+    if (isDoubleTap) {
+      lastTappedWordEl = null;
+      lastTappedAt = 0;
+      if (selectWordText(target)) {
+        state.suppressPageSwipeUntil = Date.now() + 600;
+        navigator.vibrate?.(5);
+      }
+      return;
+    }
 
     state.selectedWordSelectionId = (state.selectedWordSelectionId || 0) + 1;
     state.selectedWordSelectedAt = Date.now();
@@ -138,58 +361,83 @@ export function createWordHighlighter({
 
   function handleReadingSelectionEnd() {
     setTimeout(() => {
+      if (state.isPhraseSelecting) return;
+
       const selection = window.getSelection?.();
       if (!selection || selection.isCollapsed) return;
 
       const selectedText = collapseWhitespace(selection.toString());
       if (!selectedText) return;
-      if (selectedText.length > 80) return;
-      if (/\n/.test(selectedText)) return;
 
       const range = selection.rangeCount ? selection.getRangeAt(0) : null;
       if (!range) return;
 
-      const anchorNode = selection.anchorNode;
-      const focusNode = selection.focusNode;
-      const anchorEl = anchorNode?.nodeType === Node.TEXT_NODE ? anchorNode.parentNode : anchorNode;
-      const focusEl = focusNode?.nodeType === Node.TEXT_NODE ? focusNode.parentNode : focusNode;
-      if (!elements.readingContent.contains(anchorEl) || !elements.readingContent.contains(focusEl)) return;
-
-      const context = extractContextForRange(range);
-      if (!context) return;
-
-      const normalized = normalizeTextToKey(selectedText);
-      if (!normalized) return;
-
-      state.suppressWordClickUntil = Date.now() + 300;
-
-      state.selectedWordSelectionId = (state.selectedWordSelectionId || 0) + 1;
-      state.selectedWordSelectedAt = Date.now();
-
-      if (state.selectedWordEl) state.selectedWordEl.classList.remove('word-selected', 'word-processing');
-      state.selectedWordEl = null;
-
-      state.selectedWord = normalized;
-      state.selectedWordDisplay = selectedText;
-      state.selectedWordContext = context;
-      state.selectedWordAnalysis = getCachedAnalysisForSelectedWord(state.selectedWord) || null;
-      state.isSelectedAnalysisLoading = false;
-
-      state.selectedWord.split(' ').forEach((part) => {
-        const token = normalizeWord(part);
-        if (token) state.clickedWordsOnPage.add(token);
-      });
-
-      switchTab('vocab-analysis');
-
-      queueSelectedWordAnalysis({
-        debounceMs: 0,
-        requestId: state.selectedWordSelectionId,
-        autoOpenOnReady: true
-      });
-
-      renderVocabularyPanel();
+      handleProcessedSelection(range, selectedText);
     }, 0);
+  }
+
+  function handleReadingTouchStart(event) {
+    if (!state.isPageFlipMode) return;
+    if (!event.touches || event.touches.length !== 1) return;
+
+    const touch = event.touches[0];
+    const target = event.target?.closest?.('.word');
+    if (!target || !elements.readingContent.contains(target)) return;
+
+    phraseSelection.touchId = touch.identifier;
+    phraseSelection.startX = touch.clientX;
+    phraseSelection.startY = touch.clientY;
+
+    clearPhraseTimers();
+    phraseSelection.longPressTimer = window.setTimeout(() => beginPhraseSelection(target, touch.identifier), PHRASE_LONG_PRESS_MS);
+  }
+
+  function handleReadingTouchMove(event) {
+    if (!event.touches || phraseSelection.touchId == null) return;
+    const touch = getTouchById(event.touches, phraseSelection.touchId);
+    if (!touch) return;
+
+    const dx = touch.clientX - phraseSelection.startX;
+    const dy = touch.clientY - phraseSelection.startY;
+    const movedFar = Math.hypot(dx, dy) > PHRASE_MOVE_CANCEL_PX;
+
+    if (!phraseSelection.active) {
+      // If the user is scrolling/moving, cancel the long-press quickly.
+      if (movedFar) clearPhraseTimers();
+      return;
+    }
+
+    const elAtPoint = document.elementFromPoint(touch.clientX, touch.clientY);
+    const wordEl = elAtPoint?.closest?.('.word');
+    if (!wordEl || !elements.readingContent.contains(wordEl)) return;
+
+    const paragraphEl = wordEl.closest?.('p') || null;
+    if (!paragraphEl || paragraphEl !== phraseSelection.paragraphEl) return;
+
+    const endIndex = phraseSelection.words.indexOf(wordEl);
+    if (endIndex < 0 || endIndex === phraseSelection.endIndex) return;
+
+    phraseSelection.endIndex = endIndex;
+    const nextMin = Math.min(phraseSelection.startIndex, endIndex);
+    const nextMax = Math.max(phraseSelection.startIndex, endIndex);
+    updatePhraseHighlightRange(nextMin, nextMax);
+  }
+
+  function handleReadingTouchEnd(event) {
+    if (phraseSelection.touchId == null) return;
+    const touch = getTouchById(event.changedTouches, phraseSelection.touchId);
+    if (!touch) return;
+
+    clearPhraseTimers();
+
+    if (phraseSelection.active) {
+      commitPhraseSelection();
+      // Keep touchId until reset to avoid re-entrancy with other listeners.
+      phraseSelection.touchId = null;
+      return;
+    }
+
+    phraseSelection.touchId = null;
   }
 
   function extractContextForWordSpan(wordEl) {
@@ -244,6 +492,10 @@ export function createWordHighlighter({
   return {
     applyWordStatusesToContainer,
     handleReadingWordClick,
-    handleReadingSelectionEnd
+    handleReadingSelectionEnd,
+    handleReadingTouchStart,
+    handleReadingTouchMove,
+    handleReadingTouchEnd,
+    resetPhraseSelection
   };
 }

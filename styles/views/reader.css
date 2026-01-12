@@ -163,7 +163,7 @@
   /* Typography for Reading */
   font-family: var(--font-family-reading);
   font-size: var(--font-size-reading);
-  line-height: 1.6;
+  line-height: var(--reader-line-height);
   color: var(--text-primary);
 }
 
@@ -578,6 +578,15 @@
   background: rgba(255, 255, 255, 0.06);
 }
 
+/* Native text selection (mobile handles can be subtle; make the highlight clearer) */
+.reading-content ::selection {
+  background: rgba(0, 122, 255, 0.18);
+}
+
+[data-theme="dark"] .reading-content ::selection {
+  background: rgba(0, 122, 255, 0.28);
+}
+
 .word-new {
   text-decoration: underline dotted var(--accent-primary);
   text-underline-offset: 3px;
@@ -605,6 +614,47 @@
 
 [data-theme="dark"] .word-selected {
   background: rgba(0, 122, 255, 0.28);
+}
+
+.word-phrase-selected {
+  background: rgba(0, 122, 255, 0.12);
+}
+
+[data-theme="dark"] .word-phrase-selected {
+  background: rgba(0, 122, 255, 0.22);
+}
+
+.reader-view.is-phrase-selecting .word {
+  transition: none;
+}
+
+.reader-view.is-phrase-selecting .reading-content {
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+@media (hover: none) and (pointer: coarse) {
+  .word {
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  .word-seen {
+    background: rgba(52, 199, 89, 0.12);
+    padding: 0;
+  }
+
+  .word-learning {
+    background: rgba(255, 214, 10, 0.18);
+    padding: 0;
+  }
+
+  .word-selected {
+    background: rgba(0, 122, 255, 0.12);
+  }
+
+  [data-theme="dark"] .word-selected {
+    background: rgba(0, 122, 255, 0.24);
+  }
 }
 
 .word-processing {

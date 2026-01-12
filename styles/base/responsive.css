@@ -44,27 +44,35 @@
 
   /* 阅读界面排版优化 */
   .reading-content {
-    padding: var(--spacing-md) var(--spacing-md) var(--spacing-3xl) !important;
-    font-size: 1.15rem !important;
-    /* 手机端稍大一点便于阅读 */
-    line-height: 1.8 !important;
-    /* 更舒适的行高 */
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif !important;
+    /* Mobile-first: more generous margins for long reading sessions */
+    padding: var(--spacing-lg) clamp(18px, 5vw, 28px) calc(var(--spacing-2xl) + env(safe-area-inset-bottom)) !important;
+    -webkit-text-size-adjust: 100%;
+    text-rendering: optimizeLegibility;
+    font-kerning: normal;
   }
 
   .reading-content p {
-    margin-bottom: 1.5em !important;
+    margin-bottom: 1.9em !important;
     text-align: left !important;
     /* 手机端左对齐通常比两端对齐更易读 */
   }
 
   /* 页面模式下的容器适配 */
-  .reader-view.page-mode .reading-content>div {
+  .reader-view.page-mode .reading-content,
+  .reading-content.page-measure {
+    padding: var(--spacing-md) clamp(18px, 5vw, 28px) calc(var(--spacing-xl) + env(safe-area-inset-bottom)) !important;
+  }
+
+  .reader-view.page-mode .reading-content>div,
+  .reading-content.page-measure>div {
     padding: var(--spacing-lg) !important;
-    border-radius: var(--radius-lg) !important;
+    border-radius: 0 !important;
     margin: 0 !important;
     width: 100% !important;
     max-width: none !important;
+    border: 0 !important;
+    box-shadow: none !important;
+    background: transparent !important;
   }
 
   /* Reader Toolbar Mobile Optimization */

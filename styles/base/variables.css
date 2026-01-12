@@ -61,7 +61,7 @@
 
   --reader-font-family: var(--font-stack-serif);
   --reader-font-size: 20px;
-  --reader-line-height: 1.6;
+  --reader-line-height: 1.9;
 
   /* Back-compat: existing styles use these */
   --font-family-reading: var(--reader-font-family);
