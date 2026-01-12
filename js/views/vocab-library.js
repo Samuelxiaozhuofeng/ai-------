@@ -11,8 +11,8 @@ let deletingVocabWord = null;
 
 /** @type {{ backToBookshelf: () => void, startReview: (language?: string|null) => void }} */
 let navigation = {
-  backToBookshelf: () => {},
-  startReview: () => {}
+  backToBookshelf: () => { },
+  startReview: () => { }
 };
 
 /**
@@ -54,6 +54,71 @@ export function createVocabLibraryController(elements) {
     }
   }
 
+  /**
+   * Format next review date relative to now
+   * @param {string|null} dueDate - ISO date string
+   * @returns {string} - Formatted string like "今天", "明天", "2天后" etc.
+   */
+  function formatNextReviewTime(dueDate) {
+    if (!dueDate) return '—';
+
+    const now = new Date();
+    const due = new Date(dueDate);
+    if (Number.isNaN(due.getTime())) return '—';
+
+    const diffMs = due.getTime() - now.getTime();
+    const diffMinutes = diffMs / (1000 * 60);
+    const diffHours = diffMs / (1000 * 60 * 60);
+    const diffDays = diffMs / (1000 * 60 * 60 * 24);
+
+    // Past due
+    if (diffMs <= 0) {
+      const overdueMinutes = Math.abs(diffMinutes);
+      if (overdueMinutes < 60) return '已到期';
+      const overdueHours = Math.abs(diffHours);
+      if (overdueHours < 24) return `已过期${Math.floor(overdueHours)}小时`;
+      const overdueDays = Math.abs(diffDays);
+      if (overdueDays < 30) return `已过期${Math.floor(overdueDays)}天`;
+      return '已过期';
+    }
+
+    // Future
+    if (diffMinutes < 60) {
+      return `${Math.ceil(diffMinutes)}分钟后`;
+    }
+    if (diffHours < 24) {
+      const h = Math.floor(diffHours);
+      return h === 0 ? '1小时后' : `${h}小时后`;
+    }
+    if (diffDays < 1.5) {
+      return '明天';
+    }
+    if (diffDays < 30) {
+      return `${Math.floor(diffDays)}天后`;
+    }
+    if (diffDays < 365) {
+      const months = Math.floor(diffDays / 30);
+      return `${months}个月后`;
+    }
+    const years = (diffDays / 365).toFixed(1);
+    return `${years}年后`;
+  }
+
+  /**
+   * Get status class based on due date
+   */
+  function getReviewStatusClass(dueDate) {
+    if (!dueDate) return '';
+    const now = new Date();
+    const due = new Date(dueDate);
+    if (Number.isNaN(due.getTime())) return '';
+
+    const diffMs = due.getTime() - now.getTime();
+    if (diffMs <= 0) return 'review-overdue';
+    if (diffMs <= 24 * 60 * 60 * 1000) return 'review-today';
+    return 'review-future';
+  }
+
   function renderVocabLibrary() {
     if (!elements.vocabLibraryGrid || !elements.vocabLibraryEmpty || !elements.vocabStatsGrid) return;
 
@@ -68,63 +133,52 @@ export function createVocabLibraryController(elements) {
     elements.vocabStatsGrid.style.display = '';
     elements.vocabLibraryGrid.style.display = '';
 
-    elements.vocabLibraryGrid.innerHTML = vocabLibraryItems
-      .map((item) => {
-        const word = item.displayWord || item.normalizedWord || item.id || '—';
-        const language = item?.language || '';
-        const globalId = item.id || makeGlobalVocabId(language, item.normalizedWord || item.id || '');
-        const meaning = item.meaning || '—';
-        const usage = item.usage || '';
-        const context = item.contextSentence || '';
+    elements.vocabLibraryGrid.innerHTML = `
+      <div class="vocab-list-header">
+        <span class="vocab-list-col-word">词汇</span>
+        <span class="vocab-list-col-meaning">AI 释义</span>
+        <span class="vocab-list-col-review">下次复习</span>
+        <span class="vocab-list-col-actions">操作</span>
+      </div>
+      ${vocabLibraryItems
+        .map((item) => {
+          const word = item.displayWord || item.normalizedWord || item.id || '—';
+          const language = item?.language || '';
+          const globalId = item.id || makeGlobalVocabId(language, item.normalizedWord || item.id || '');
+          const meaning = item.meaning || '—';
+          const nextReview = formatNextReviewTime(item.due);
+          const statusClass = getReviewStatusClass(item.due);
 
-        return `
-            <div class="vocab-library-card" data-word="${escapeHtml(globalId)}">
-                <div class="vocab-library-card-header">
-                    <div class="vocab-library-title">
-                        <span class="vocab-library-word">${escapeHtml(word)}</span>
-                        ${
-                          language
-                            ? `<span class="vocab-language-badge">${escapeHtml(
-                                SUPPORTED_LANGUAGES[language] || language
-                              )}</span>`
-                            : ''
-                        }
-                    </div>
-                    <div class="vocab-library-card-actions">
-                        <button class="btn btn-ghost" data-action="edit" data-word="${escapeHtml(globalId)}" title="编辑">✏️</button>
-                        <button class="btn btn-ghost" data-action="delete" data-word="${escapeHtml(globalId)}" title="删除">🗑️</button>
-                    </div>
-                </div>
-                <div class="vocab-library-card-body">
-                    <div class="vocab-library-row">
-                        <span class="vocab-library-label">含义</span>
-                        <span class="vocab-library-value">${escapeHtml(meaning)}</span>
-                    </div>
-                    ${
-                      usage
-                        ? `
-                    <div class="vocab-library-row">
-                        <span class="vocab-library-label">用法</span>
-                        <span class="vocab-library-value">${escapeHtml(usage)}</span>
-                    </div>
-                    `
-                        : ''
-                    }
-                    ${
-                      context
-                        ? `
-                    <div class="vocab-library-row">
-                        <span class="vocab-library-label">上下文</span>
-                        <span class="vocab-library-value">${escapeHtml(context)}</span>
-                    </div>
-                    `
-                        : ''
-                    }
-                </div>
+          return `
+            <div class="vocab-list-item" data-word="${escapeHtml(globalId)}">
+              <div class="vocab-list-col-word">
+                <span class="vocab-word-text">${escapeHtml(word)}</span>
+                ${language
+              ? `<span class="vocab-language-badge">${escapeHtml(
+                SUPPORTED_LANGUAGES[language] || language
+              )}</span>`
+              : ''
+            }
+              </div>
+              <div class="vocab-list-col-meaning">
+                <span class="vocab-meaning-text">${escapeHtml(meaning)}</span>
+              </div>
+              <div class="vocab-list-col-review">
+                <span class="vocab-review-time ${statusClass}">${nextReview}</span>
+              </div>
+              <div class="vocab-list-col-actions">
+                <button class="btn btn-ghost btn-icon" data-action="edit" data-word="${escapeHtml(globalId)}" title="编辑">
+                  <span class="icon">✏️</span>
+                </button>
+                <button class="btn btn-ghost btn-icon btn-danger-hover" data-action="delete" data-word="${escapeHtml(globalId)}" title="删除">
+                  <span class="icon">🗑️</span>
+                </button>
+              </div>
             </div>
-        `;
-      })
-      .join('');
+          `;
+        })
+        .join('')}
+    `;
   }
 
   function handleVocabLibraryCardClick(event) {
