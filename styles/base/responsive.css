@@ -66,6 +66,7 @@
   .reader-view.page-mode .reading-content>div,
   .reading-content.page-measure>div {
     padding: var(--spacing-lg) !important;
+    box-sizing: border-box !important;
     border-radius: 0 !important;
     margin: 0 !important;
     width: 100% !important;

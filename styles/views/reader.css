@@ -182,6 +182,7 @@
   box-shadow: var(--shadow-lg);
   padding: var(--spacing-2xl);
   height: 100%;
+  box-sizing: border-box;
 }
 
 .reader-view.page-mode .reading-content p,
