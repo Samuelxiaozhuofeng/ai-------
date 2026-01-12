@@ -65,7 +65,7 @@
 
   .reader-view.page-mode .reading-content>div,
   .reading-content.page-measure>div {
-    padding: var(--spacing-lg) !important;
+    padding: var(--spacing-lg) var(--spacing-lg) var(--spacing-2xl) !important;
     box-sizing: border-box !important;
     border-radius: 0 !important;
     margin: 0 !important;

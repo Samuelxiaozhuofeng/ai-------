@@ -180,7 +180,7 @@
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-xl);
   box-shadow: var(--shadow-lg);
-  padding: var(--spacing-2xl);
+  padding: var(--spacing-2xl) var(--spacing-2xl) var(--spacing-3xl);
   height: 100%;
   box-sizing: border-box;
 }
