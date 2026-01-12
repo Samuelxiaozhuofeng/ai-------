@@ -315,21 +315,24 @@
             </div>
           </div>
 
-          <button class="btn btn-primary review-show-answer" id="reviewShowAnswerBtn">显示答案 (空格)</button>
+          <div class="review-footer">
+            <button class="btn btn-primary review-show-answer" id="reviewShowAnswerBtn">显示答案 (空格)</button>
 
-          <div class="review-actions" id="reviewActions">
-            <button class="btn btn-secondary review-rate-btn review-btn-again" data-rating="again" id="reviewAgainBtn">
-              <span class="review-btn-emoji">❌</span>
-              <span class="review-btn-label">忘记</span>
-              <span class="review-interval" id="reviewAgainInterval"></span>
-            </button>
-            <button class="btn btn-secondary review-rate-btn review-btn-good" data-rating="good" id="reviewGoodBtn">
-              <span class="review-btn-emoji">✅</span>
-              <span class="review-btn-label">记得</span>
-              <span class="review-interval" id="reviewGoodInterval"></span>
-            </button>
+            <div class="review-actions" id="reviewActions">
+              <button class="btn btn-secondary review-rate-btn review-btn-again" data-rating="again" id="reviewAgainBtn">
+                <span class="review-btn-emoji">❌</span>
+                <span class="review-btn-label">忘记</span>
+                <span class="review-interval" id="reviewAgainInterval"></span>
+              </button>
+              <button class="btn btn-secondary review-rate-btn review-btn-good" data-rating="good" id="reviewGoodBtn">
+                <span class="review-btn-emoji">✅</span>
+                <span class="review-btn-label">记得</span>
+                <span class="review-interval" id="reviewGoodInterval"></span>
+              </button>
+            </div>
+
+            <div class="review-hint" id="reviewHint">快捷键: 空格=显示答案 1=忘记 2/3/4=记得</div>
           </div>
-          <div class="review-hint" id="reviewHint">快捷键: 空格=显示答案 1=忘记 2/3/4=记得</div>
         </div>
       </main>
     </section>
