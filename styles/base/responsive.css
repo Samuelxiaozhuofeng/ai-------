@@ -112,6 +112,12 @@
     backdrop-filter: blur(2px);
   }
 
+  /* Vocab sheet should not dim reading content */
+  .mobile-vocab-overlay {
+    background: transparent;
+    backdrop-filter: none;
+  }
+
   .mobile-vocab-overlay.active,
   .mobile-chapter-overlay.active {
     display: block;
