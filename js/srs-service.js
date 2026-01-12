@@ -18,7 +18,7 @@ import {
   upsertGlobalVocabItem
 } from './db.js';
 
-const TS_FSRS_URL = 'https://esm.sh/ts-fsrs@4';
+const TS_FSRS_URL = 'https://esm.sh/ts-fsrs@5';
 
 /** @type {Promise<any>|null} */
 let tsFsrsPromise = null;
@@ -174,25 +174,25 @@ export async function ensureFsrsCardFields(item) {
     const createEmpty = typeof mod?.createEmptyCard === 'function' ? mod.createEmptyCard : null;
     const emptyCard = createEmpty ? createEmpty(now) : createFallbackEmptyCard(now);
     const fields = fsrsCardToFields(emptyCard);
-    
+
     if (hasDue) {
       const existingDue = new Date(item.due);
       if (!Number.isNaN(existingDue.getTime()) && existingDue.getTime() <= now.getTime()) {
         fields.due = item.due;
       }
     }
-    
+
     return { ...item, ...fields };
   } catch {
     const fields = fsrsCardToFields(createFallbackEmptyCard(now));
-    
+
     if (hasDue) {
       const existingDue = new Date(item.due);
       if (!Number.isNaN(existingDue.getTime()) && existingDue.getTime() <= now.getTime()) {
         fields.due = item.due;
       }
     }
-    
+
     return { ...item, ...fields };
   }
 }
