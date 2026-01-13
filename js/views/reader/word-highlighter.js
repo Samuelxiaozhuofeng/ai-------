@@ -207,7 +207,6 @@ export function createWordHighlighter({
       const shouldAutoStudy = Boolean(
         normalized
           && getAutoStudyEnabled()
-          && effectiveStatus !== WORD_STATUSES.KNOWN
           && effectiveStatus !== WORD_STATUSES.LEARNING
       );
       if (shouldAutoStudy) {
@@ -292,7 +291,6 @@ export function createWordHighlighter({
     const shouldAutoStudy = Boolean(
       state.selectedWord
         && getAutoStudyEnabled()
-        && effectiveStatus !== WORD_STATUSES.KNOWN
         && effectiveStatus !== WORD_STATUSES.LEARNING
     );
     if (shouldAutoStudy) {
