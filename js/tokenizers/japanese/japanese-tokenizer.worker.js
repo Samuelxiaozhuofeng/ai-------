@@ -2,6 +2,7 @@
 
 let tokenizer = null;
 let initPromise = null;
+let lastDicPath = null;
 
 function loadVendorScripts() {
   // Relative to: js/tokenizers/japanese/japanese-tokenizer.worker.js
@@ -113,12 +114,27 @@ function attachOffsets(text, raw, startOffset) {
 
 async function handleInit(message) {
   const dicPath = message?.dicPath || null;
-  await ensureTokenizer(dicPath);
-  return { ok: true };
+  // Keep init lightweight: ensure vendor scripts are loaded and kick off tokenizer build in the background.
+  // The first tokenize call will await the same initPromise and block until ready.
+  lastDicPath = typeof dicPath === 'string' && dicPath ? dicPath : lastDicPath;
+  try {
+    loadVendorScripts();
+  } catch (error) {
+    throw error;
+  }
+  if (!self.kuromoji?.builder) {
+    throw new Error('Kuromoji not available in worker');
+  }
+  if (lastDicPath) {
+    // Fire-and-forget warm-up.
+    void ensureTokenizer(lastDicPath);
+  }
+  return { ok: true, warming: Boolean(lastDicPath) };
 }
 
 async function handleTokenize(message) {
-  const dicPath = message?.dicPath || null;
+  const dicPath = message?.dicPath || lastDicPath || null;
+  lastDicPath = typeof dicPath === 'string' && dicPath ? dicPath : lastDicPath;
   await ensureTokenizer(dicPath);
 
   const paragraphs = Array.isArray(message?.paragraphs) ? message.paragraphs : [];
@@ -169,4 +185,3 @@ self.onmessage = (event) => {
     }
   })();
 };
-

@@ -9,8 +9,9 @@ import {
   isValidToken
 } from './japanese-token-types.js';
 
-const DEFAULT_INIT_TIMEOUT_MS = 12000;
-const DEFAULT_TOKENIZE_TIMEOUT_MS = 20000;
+// First-time Kuromoji init loads and inflates multiple .gz dictionary files and can be slow on mobile.
+const DEFAULT_INIT_TIMEOUT_MS = 90000;
+const DEFAULT_TOKENIZE_TIMEOUT_MS = 90000;
 
 let worker = null;
 let workerInitPromise = null;
@@ -32,7 +33,7 @@ function terminateWorker() {
   worker = null;
   workerInitPromise = null;
   for (const [id, entry] of pending.entries()) {
-    if (entry.timer != null) clearTimeout(entry.timer);
+    if (entry.timer != null) globalThis.clearTimeout(entry.timer);
     entry.reject(new Error('Japanese tokenizer worker terminated'));
     pending.delete(id);
   }
@@ -67,7 +68,7 @@ function postToWorker(type, payload, timeoutMs) {
   const requestId = ++requestSeq;
 
   return new Promise((resolve, reject) => {
-    const timer = window.setTimeout(() => {
+    const timer = globalThis.setTimeout(() => {
       pending.delete(requestId);
       reject(new Error(`Japanese tokenizer worker timeout: ${type}`));
     }, Math.max(1000, Number(timeoutMs) || DEFAULT_TOKENIZE_TIMEOUT_MS));
@@ -82,7 +83,7 @@ function postToWorker(type, payload, timeoutMs) {
       });
     } catch (error) {
       pending.delete(requestId);
-      clearTimeout(timer);
+      globalThis.clearTimeout(timer);
       reject(error);
     }
   });
@@ -192,6 +193,9 @@ export async function tokenizeJapaneseChapter({ bookId, chapterId, textHash, par
   if (!safeBookId || !safeChapterId || !safeHash) {
     throw new Error('Missing bookId/chapterId/textHash for Japanese tokenization');
   }
+  if (globalThis.location?.protocol === 'file:') {
+    throw new Error('Japanese tokenization requires serving files over http(s) (not file://)');
+  }
 
   const cached = await getJapaneseTokenCacheEntry(safeBookId, safeChapterId, safeHash);
   if (cached?.tokens?.length) {
@@ -231,4 +235,3 @@ export function getJapaneseTokenizerMeta() {
     dictVersion: JA_DICT_VERSION
   };
 }
-
