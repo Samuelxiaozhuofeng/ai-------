@@ -53,6 +53,57 @@
   font-weight: 500;
 }
 
+/* Controls */
+.vocab-library-controls {
+  max-width: 1000px;
+  margin: 0 auto var(--spacing-lg);
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  padding: var(--spacing-md) var(--spacing-lg);
+}
+
+.vocab-controls-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--spacing-md);
+  flex-wrap: wrap;
+}
+
+.vocab-controls-left {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  flex: 1;
+  min-width: 0;
+  flex-wrap: wrap;
+}
+
+.vocab-controls-left .input {
+  min-width: 180px;
+}
+
+.vocab-controls-right {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+}
+
+.vocab-controls-meta {
+  margin-top: var(--spacing-sm);
+  font-size: var(--font-size-xs);
+  color: var(--text-secondary);
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  flex-wrap: wrap;
+}
+
+.vocab-controls-dot {
+  opacity: 0.6;
+}
+
 /* Vocabulary Library Grid - Now List Layout */
 .vocab-library-grid {
   display: flex;
@@ -105,6 +156,12 @@
   align-items: center;
   gap: var(--spacing-sm);
   min-width: 0;
+}
+
+.vocab-select-checkbox {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
 }
 
 .vocab-word-text {
@@ -198,6 +255,50 @@
   background: rgba(239, 68, 68, 0.15);
 }
 
+.vocab-library-no-results {
+  padding: var(--spacing-xl);
+  text-align: center;
+  color: var(--text-secondary);
+}
+
+/* Pagination */
+.vocab-pagination {
+  display: flex;
+  justify-content: center;
+  gap: var(--spacing-xs);
+  padding: var(--spacing-md);
+  border-top: 1px solid var(--border-subtle);
+  background: var(--bg-secondary);
+  flex-wrap: wrap;
+}
+
+.vocab-page-btn.is-active {
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-default);
+}
+
+.vocab-pagination-ellipsis {
+  display: inline-flex;
+  align-items: center;
+  padding: 0 6px;
+  color: var(--text-secondary);
+}
+
+/* Bulk delete preview */
+.bulk-delete-preview {
+  margin-top: var(--spacing-sm);
+  padding-left: 18px;
+}
+
+.bulk-delete-preview li {
+  margin: 4px 0;
+}
+
+.bulk-delete-preview .bulk-delete-more {
+  color: var(--text-secondary);
+  font-size: var(--font-size-xs);
+}
+
 /* Empty State */
 .vocab-library-empty {
   display: flex;
@@ -250,6 +351,20 @@
 
   .vocab-stat-card {
     padding: var(--spacing-md);
+  }
+
+  .vocab-library-controls {
+    padding: var(--spacing-md);
+  }
+
+  .vocab-controls-left .input {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .vocab-controls-right {
+    width: 100%;
+    justify-content: flex-end;
   }
 
   /* List Header hidden on mobile */

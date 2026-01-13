@@ -370,6 +370,37 @@
           </div>
         </div>
 
+        <!-- Controls -->
+        <div class="vocab-library-controls" id="vocabLibraryControls" style="display: none;">
+          <div class="vocab-controls-row">
+            <div class="vocab-controls-left">
+              <input type="text" class="input" id="vocabLibrarySearchInput" placeholder="搜索词汇或释义…" />
+              <select class="input select" id="vocabLibraryFilterStatus">
+                <option value="all">全部状态</option>
+                <option value="overdue">已到期</option>
+                <option value="today">今日复习</option>
+                <option value="future">未来复习</option>
+              </select>
+              <select class="input select" id="vocabLibraryFilterLanguage">
+                <option value="all">全部语言</option>
+                <option value="en">英语</option>
+                <option value="other">其他语言</option>
+              </select>
+            </div>
+            <div class="vocab-controls-right">
+              <button class="btn btn-secondary" id="vocabLibrarySelectAllBtn" disabled>全选本页</button>
+              <button class="btn btn-danger" id="vocabLibraryBulkDeleteBtn" style="display: none;">批量删除</button>
+            </div>
+          </div>
+          <div class="vocab-controls-meta">
+            <span id="vocabLibraryResultCount">结果: —</span>
+            <span class="vocab-controls-dot">·</span>
+            <span id="vocabLibraryPageInfo">第 — 页</span>
+            <span class="vocab-controls-dot">·</span>
+            <span id="vocabLibrarySelectedCount">未选择</span>
+          </div>
+        </div>
+
         <!-- Vocabulary Grid -->
         <div class="vocab-library-grid" id="vocabLibraryGrid">
           <!-- Vocabulary cards will be rendered here -->
@@ -434,6 +465,24 @@
         <div class="modal-footer">
           <button class="btn btn-ghost" id="cancelDeleteVocabBtn">取消</button>
           <button class="btn btn-danger" id="confirmDeleteVocabBtn">删除</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Bulk Delete Vocabulary Confirmation Modal -->
+    <div class="modal-overlay" id="bulkDeleteVocabModal">
+      <div class="modal modal-small">
+        <div class="modal-header">
+          <h2>🗑️ 批量删除</h2>
+          <button class="btn btn-ghost btn-small" id="closeBulkDeleteVocabBtn">✕</button>
+        </div>
+        <div class="modal-body">
+          <p id="bulkDeleteVocabConfirmText">确定要删除选中的词汇吗？此操作无法撤销。</p>
+          <ul class="bulk-delete-preview" id="bulkDeleteVocabPreviewList"></ul>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-ghost" id="cancelBulkDeleteVocabBtn">取消</button>
+          <button class="btn btn-danger" id="confirmBulkDeleteVocabBtn">删除</button>
         </div>
       </div>
     </div>

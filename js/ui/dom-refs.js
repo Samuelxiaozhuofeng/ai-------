@@ -187,6 +187,15 @@ export const elements = {
   statLearningCount: document.getElementById('statLearningCount'),
   statDueCount: document.getElementById('statDueCount'),
   statTotalReps: document.getElementById('statTotalReps'),
+  vocabLibraryControls: document.getElementById('vocabLibraryControls'),
+  vocabLibrarySearchInput: document.getElementById('vocabLibrarySearchInput'),
+  vocabLibraryFilterStatus: document.getElementById('vocabLibraryFilterStatus'),
+  vocabLibraryFilterLanguage: document.getElementById('vocabLibraryFilterLanguage'),
+  vocabLibrarySelectAllBtn: document.getElementById('vocabLibrarySelectAllBtn'),
+  vocabLibraryBulkDeleteBtn: document.getElementById('vocabLibraryBulkDeleteBtn'),
+  vocabLibraryResultCount: document.getElementById('vocabLibraryResultCount'),
+  vocabLibraryPageInfo: document.getElementById('vocabLibraryPageInfo'),
+  vocabLibrarySelectedCount: document.getElementById('vocabLibrarySelectedCount'),
   vocabLibraryGrid: document.getElementById('vocabLibraryGrid'),
   vocabLibraryEmpty: document.getElementById('vocabLibraryEmpty'),
   vocabLibraryBackBtn: document.getElementById('vocabLibraryBackBtn'),
@@ -208,6 +217,14 @@ export const elements = {
   cancelDeleteVocabBtn: document.getElementById('cancelDeleteVocabBtn'),
   confirmDeleteVocabBtn: document.getElementById('confirmDeleteVocabBtn'),
   deleteVocabConfirmText: document.getElementById('deleteVocabConfirmText'),
+
+  // Bulk Delete Vocabulary Modal
+  bulkDeleteVocabModal: document.getElementById('bulkDeleteVocabModal'),
+  closeBulkDeleteVocabBtn: document.getElementById('closeBulkDeleteVocabBtn'),
+  cancelBulkDeleteVocabBtn: document.getElementById('cancelBulkDeleteVocabBtn'),
+  confirmBulkDeleteVocabBtn: document.getElementById('confirmBulkDeleteVocabBtn'),
+  bulkDeleteVocabConfirmText: document.getElementById('bulkDeleteVocabConfirmText'),
+  bulkDeleteVocabPreviewList: document.getElementById('bulkDeleteVocabPreviewList'),
 
   // Import: Language Select Modal
   languageSelectModal: document.getElementById('languageSelectModal'),
