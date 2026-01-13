@@ -151,6 +151,7 @@ export async function analyzeWordInstant(word, context, options = {}) {
 你必须以JSON格式返回分析结果，格式如下：
 {
   "word": "原文词汇",
+  "lemma": "词汇原形（如动词不定式、名词单数）",
   "partOfSpeech": "词性（如：动词、名词、形容词等）",
   "meaning": "中文释义 / English gloss（中英双语）",
   "usage": "用法说明（可包含常见搭配/语域提示）",
@@ -163,6 +164,7 @@ ${baseNotes}`,
 你必须以JSON格式返回分析结果，格式如下：
 {
   "word": "原文词汇",
+  "lemma": "词汇原形（动词为不定式如 poder，名词为阳性单数）",
   "partOfSpeech": "词性",
   "meaning": "基本含义",
   "conjugation": "若为动词：给出原形、时态/人称/数的变位要点；否则留空字符串",
@@ -177,6 +179,7 @@ ${baseNotes}`,
 你必须以JSON格式返回分析结果，格式如下：
 {
   "word": "原文词汇",
+  "lemma": "词汇原形/辞书形",
   "furigana": "假名读音（若适用）",
   "partOfSpeech": "词性",
   "meaning": "基本含义",

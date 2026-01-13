@@ -167,10 +167,12 @@ function formatIntervalDays(days, due, now) {
 
 function normalizeAnalysisFields(analysis) {
   if (!analysis) return {};
+  const lemma = typeof analysis?.lemma === 'string' ? analysis.lemma.trim() : '';
   return {
     meaning: analysis.meaning || null,
     usage: analysis.usage || null,
-    contextualMeaning: analysis.contextualMeaning || null
+    contextualMeaning: analysis.contextualMeaning || null,
+    lemma: lemma || null
   };
 }
 
@@ -246,6 +248,7 @@ export async function ensureGlobalLearningCard(params) {
     language,
     normalizedWord: normalized,
     displayWord: existing?.displayWord || params?.displayWord || normalized,
+    lemma: existing?.lemma || analysisFields.lemma || null,
     status: 'learning',
     sourceBooks: nextSourceBooks,
     meaning: existing?.meaning || analysisFields.meaning,
@@ -317,6 +320,7 @@ export async function upsertGlobalAnalysis(normalizedWord, analysis, contextSent
   return upsertGlobalVocabItem({
     ...existing,
     displayWord: existing.displayWord || displayWord || normalized,
+    lemma: existing.lemma || analysisFields.lemma || null,
     meaning: analysisFields.meaning || existing.meaning || null,
     usage: analysisFields.usage || existing.usage || null,
     contextualMeaning: analysisFields.contextualMeaning || existing.contextualMeaning || null,

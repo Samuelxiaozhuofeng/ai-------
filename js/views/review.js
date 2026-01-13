@@ -74,7 +74,7 @@ export function createReviewController(elements) {
     }
 
     currentReviewItem = reviewQueue[reviewIndex];
-    const display = currentReviewItem?.displayWord || currentReviewItem?.normalizedWord || currentReviewItem?.id || '—';
+    const display = currentReviewItem?.lemma || currentReviewItem?.displayWord || currentReviewItem?.normalizedWord || currentReviewItem?.id || '—';
 
     setReviewText(elements.reviewWord, display);
     setReviewText(elements.reviewMeaning, currentReviewItem?.meaning);

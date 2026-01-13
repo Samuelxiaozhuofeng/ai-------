@@ -116,6 +116,7 @@ function mapLocalBookVocabToRow(userId, item) {
     language: item.language || null,
     word: item.word,
     display_word: item.displayWord || null,
+    lemma: item.lemma || null,
     status: item.status || null,
     context: item.context || null,
     analysis: item.analysis || null,

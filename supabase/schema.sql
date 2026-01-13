@@ -64,6 +64,7 @@ create table if not exists public.vocabulary (
   word text null,
 
   display_word text null,
+  lemma text null,
   status text null,
   context jsonb null,
   analysis jsonb null,

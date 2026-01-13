@@ -543,6 +543,7 @@ export function createVocabPanel({
           language: existing.language || getCurrentBookLanguage(),
           word: normalizedWord,
           displayWord: existing.displayWord || displayWord,
+          lemma: existing.lemma || (typeof result?.lemma === 'string' && result.lemma.trim() ? result.lemma.trim() : null),
           analysis: result,
           context: existing.context || context,
           sourceChapterId: existing.sourceChapterId || state.currentBook?.chapters?.[state.currentChapterIndex]?.id || null
@@ -637,12 +638,18 @@ export function createVocabPanel({
     }
 
     const existing = existingEntry || {};
+    const inferredLemma =
+      existing.lemma
+      || (typeof existing?.analysis?.lemma === 'string' ? existing.analysis.lemma.trim() : '')
+      || (typeof state?.selectedWordAnalysis?.lemma === 'string' ? state.selectedWordAnalysis.lemma.trim() : '')
+      || null;
     const updated = await upsertBookVocabularyItem({
       ...existing,
       bookId: state.currentBookId,
       language: getCurrentBookLanguage(),
       word: state.selectedWord,
       displayWord: existing.displayWord || state.selectedWordDisplay || state.selectedWord,
+      lemma: inferredLemma,
       status: nextStatus,
       context: existing.context || state.selectedWordContext || null,
       analysis: existing.analysis || state.selectedWordAnalysis || null,
@@ -684,7 +691,18 @@ export function createVocabPanel({
         : entry.status === WORD_STATUSES.SEEN ? WORD_STATUSES.LEARNING
           : WORD_STATUSES.LEARNING;
 
-    const updated = await upsertBookVocabularyItem({ ...entry, bookId: state.currentBookId, language: getCurrentBookLanguage(), word: normalizedWord, status: nextStatus });
+    const inferredLemma =
+      entry.lemma
+      || (typeof entry?.analysis?.lemma === 'string' ? entry.analysis.lemma.trim() : '')
+      || null;
+    const updated = await upsertBookVocabularyItem({
+      ...entry,
+      bookId: state.currentBookId,
+      language: getCurrentBookLanguage(),
+      word: normalizedWord,
+      lemma: inferredLemma,
+      status: nextStatus
+    });
     if (nextStatus === WORD_STATUSES.LEARNING) {
       const global = await ensureGlobalLearningCard({
         language: getCurrentBookLanguage(),
