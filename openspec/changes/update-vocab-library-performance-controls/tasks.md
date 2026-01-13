@@ -20,6 +20,6 @@
 - [x] 4.3 Confirm modal (count + preview max 10) via ModalManager; delete via `deleteGlobalVocabItem`
 
 ## 5. Manual Validation
-- [ ] 5.1 Large dataset: switching pages remains responsive
-- [ ] 5.2 Search/filters: result count and paging behave correctly
-- [ ] 5.3 Bulk delete: modal contents correct; items removed locally + remotely
+- [x] 5.1 Large dataset: switching pages remains responsive
+- [x] 5.2 Search/filters: result count and paging behave correctly
+- [x] 5.3 Bulk delete: modal contents correct; items removed locally + remotely

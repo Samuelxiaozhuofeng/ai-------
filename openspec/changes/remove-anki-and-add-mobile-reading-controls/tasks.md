@@ -20,6 +20,6 @@
 - [x] 4.3 Ensure settings modal layout remains usable on small screens (scrolling/overflow as needed)
 
 ## 5. Manual Validation
-- [ ] 5.1 Desktop: open reader → open typography control → changes apply live + persist
-- [ ] 5.2 Mobile: open reader → open typography control → changes apply live + persist
+- [x] 5.1 Desktop: open reader → open typography control → changes apply live + persist
+- [x] 5.2 Mobile: open reader → open typography control → changes apply live + persist
 - [x] 5.3 Verify no remaining Anki UI and no `localhost:8765` requests

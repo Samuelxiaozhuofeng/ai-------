@@ -63,12 +63,12 @@
 - [x] 8.6 Add manual "Sync Now" button in settings
 
 ## 9. Testing & Validation
-- [ ] 9.1 Test page-flip with various content lengths
-- [ ] 9.2 Test word status persistence across page loads
-- [ ] 9.3 Test chapter navigation and progress saving
-- [ ] 9.4 Test backend API endpoints with curl/httpie
-- [ ] 9.5 Test sync behavior (online/offline transitions)
-- [ ] 9.6 Test migration of existing books and marks
+- [x] 9.1 Test page-flip with various content lengths
+- [x] 9.2 Test word status persistence across page loads
+- [x] 9.3 Test chapter navigation and progress saving
+- [x] 9.4 Test backend API endpoints with curl/httpie
+- [x] 9.5 Test sync behavior (online/offline transitions)
+- [x] 9.6 Test migration of existing books and marks
 
 ## 10. Documentation & Cleanup
 - [x] 10.1 Update README with new features and backend setup

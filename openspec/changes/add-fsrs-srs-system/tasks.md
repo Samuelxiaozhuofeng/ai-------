@@ -40,7 +40,7 @@
   - `getDueCards()` - get cards due for review
   - `getReviewStats()` - count due/new/total cards
 - [x] 5.3 Initialize FSRS with default parameters
-- [ ] 5.4 Test FSRS scheduling with sample cards
+- [x] 5.4 Test FSRS scheduling with sample cards
 
 ## 6. Review Interface UI
 - [x] 6.1 Add "Review" button/tab to main navigation (bookshelf header)
@@ -64,22 +64,22 @@
 ## 8. AI Analysis Storage
 - [x] 8.1 Store AI analysis (meaning, usage, contextualMeaning) in global vocabulary
 - [x] 8.2 Display stored analysis in review cards
-- [ ] 8.3 Add "Regenerate Analysis" button in review (optional)
+- [x] 8.3 Add "Regenerate Analysis" button in review (optional)
 - [x] 8.4 Handle missing AI content gracefully (show word + context only)
 
 ## 9. Migration & Compatibility
 - [x] 9.1 Create migration script for existing `learning` words → global vocab with FSRS
 - [x] 9.2 Ensure existing per-book vocabulary continues to work
 - [x] 9.3 Update IndexedDB version and handle upgrade path
-- [ ] 9.4 Test with fresh install and upgrade scenarios
+- [x] 9.4 Test with fresh install and upgrade scenarios
 
 ## 10. Testing & Polish
-- [ ] 10.1 Test page-turn auto-marking with various scenarios
-- [ ] 10.2 Test FSRS scheduling produces reasonable intervals
-- [ ] 10.3 Test review session flow (start → rate → finish)
-- [ ] 10.4 Test cross-book vocabulary merging
-- [ ] 10.5 Test word status sync between reading view and review
-- [ ] 10.6 Polish animations and transitions in review UI
+- [x] 10.1 Test page-turn auto-marking with various scenarios
+- [x] 10.2 Test FSRS scheduling produces reasonable intervals
+- [x] 10.3 Test review session flow (start → rate → finish)
+- [x] 10.4 Test cross-book vocabulary merging
+- [x] 10.5 Test word status sync between reading view and review
+- [x] 10.6 Polish animations and transitions in review UI
 
 ---
 
