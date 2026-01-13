@@ -199,6 +199,23 @@ export function createWordHighlighter({
 
     switchTab('vocab-analysis');
 
+    // Mobile browsers often trigger a native selection (double-tap) instead of a simple click.
+    // For single-word selections, keep auto-study behavior consistent with tap-to-lookup.
+    const isSingleWordSelection = !normalized.includes(' ');
+    if (isSingleWordSelection) {
+      const effectiveStatus = getEffectiveWordStatus(normalized);
+      const shouldAutoStudy = Boolean(
+        normalized
+          && getAutoStudyEnabled()
+          && effectiveStatus !== WORD_STATUSES.KNOWN
+          && effectiveStatus !== WORD_STATUSES.LEARNING
+      );
+      if (shouldAutoStudy) {
+        setSelectedWordStatus(WORD_STATUSES.LEARNING, { trigger: 'click' })
+          .catch((error) => console.warn('Auto-study (selection) failed:', error));
+      }
+    }
+
     queueSelectedWordAnalysis({
       debounceMs: 0,
       requestId: state.selectedWordSelectionId,
@@ -279,7 +296,8 @@ export function createWordHighlighter({
         && effectiveStatus !== WORD_STATUSES.LEARNING
     );
     if (shouldAutoStudy) {
-      void setSelectedWordStatus(WORD_STATUSES.LEARNING, { trigger: 'click' });
+      setSelectedWordStatus(WORD_STATUSES.LEARNING, { trigger: 'click' })
+        .catch((error) => console.warn('Auto-study (click) failed:', error));
     }
 
     queueSelectedWordAnalysis({

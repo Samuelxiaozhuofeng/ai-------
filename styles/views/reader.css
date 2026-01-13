@@ -552,18 +552,6 @@
   background: var(--accent-primary);
 }
 
-/* Marked Text */
-.vocab-mark {
-  background: var(--mark-bg);
-  cursor: pointer;
-  border-radius: 2px;
-  padding: 2px 0;
-}
-
-.vocab-mark:hover {
-  background: rgba(255, 214, 10, 0.5);
-}
-
 /* Clickable Words */
 .word {
   cursor: pointer;
