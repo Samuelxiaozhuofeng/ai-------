@@ -1,0 +1,21 @@
+services:
+  - type: worker
+    name: intelligent-reader-worker
+    runtime: docker
+    plan: free
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    autoDeploy: true
+    envVars:
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      - key: SUPABASE_BUCKET
+        value: epubs
+      - key: WORKER_ID
+        generateValue: true
+      - key: POLL_INTERVAL_MS
+        value: "1500"
+      - key: MAX_ATTEMPTS
+        value: "5"

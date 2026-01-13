@@ -376,7 +376,7 @@ export function createPaginationEngine({
       if (language === 'ja') {
         const requestId = ++renderRequestId;
         const pageHeight = elements.readingContent.clientHeight || 520;
-        elements.readingContent.innerHTML = '<p class="loading">Tokenizing Japanese...</p>';
+        elements.readingContent.innerHTML = '<p class="loading">Loading Japanese tokens...</p>';
 
         const bookId = state.currentBookId || null;
         const chapterId = state.currentBook?.chapters?.[state.currentChapterIndex]?.id || null;
@@ -412,16 +412,9 @@ export function createPaginationEngine({
 
             renderCurrentPage('none');
           } catch (error) {
-            console.warn('Japanese tokenization wrapper failed, falling back to regex:', error);
+            console.warn('Japanese wrapper build failed:', error);
             if (requestId !== renderRequestId) return;
-
-            const { wrapper, canonicalText } = buildTokenizedChapterWrapperWithMeta(chapterContent);
-            const { pages, pageStartCharOffsets } = paginateTokenizedWrapper(wrapper, pageHeight);
-            state.chapterPages = pages;
-            state.pageStartCharOffsets = pageStartCharOffsets;
-            state.chapterTextHash = hashCanonicalText(canonicalText);
-            state.currentPageIndex = 0;
-            renderCurrentPage('none');
+            elements.readingContent.innerHTML = '<p class="loading">Failed to load Japanese tokens.</p>';
           }
         })();
         return;
@@ -460,7 +453,7 @@ export function createPaginationEngine({
 
     if (language === 'ja') {
       const requestId = ++renderRequestId;
-      elements.readingContent.innerHTML = '<p class="loading">Tokenizing Japanese...</p>';
+      elements.readingContent.innerHTML = '<p class="loading">Loading Japanese tokens...</p>';
       const bookId = state.currentBookId || null;
       const chapterId = state.currentBook?.chapters?.[state.currentChapterIndex]?.id || null;
 
@@ -478,10 +471,9 @@ export function createPaginationEngine({
           applyWordStatusesToContainer(elements.readingContent);
           updatePageControls();
         } catch (error) {
-          console.warn('Japanese tokenization wrapper failed, falling back to regex:', error);
+          console.warn('Japanese wrapper build failed:', error);
           if (requestId !== renderRequestId) return;
-          renderTokenizedChapterContent(elements.readingContent, chapterContent);
-          applyWordStatusesToContainer(elements.readingContent);
+          elements.readingContent.innerHTML = '<p class="loading">Failed to load Japanese tokens.</p>';
           updatePageControls();
         }
       })();

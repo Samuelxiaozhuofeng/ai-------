@@ -2,7 +2,7 @@
 
 This service claims jobs from Supabase (`public.book_processing_jobs`) and produces processed reading artifacts:
 - TOC-based chapter extraction (EPUB3 `nav.xhtml`, EPUB2 `toc.ncx`)
-- Japanese (ja) Kuromoji tokenization with offsets aligned to frontend canonical text rules
+- Japanese (ja) SudachiPy tokenization with offsets aligned to frontend canonical text rules (SplitMode.C + sudachidict_core)
 - Upload artifacts to Supabase Storage and delete the source EPUB on success
 
 ## Environment
@@ -28,4 +28,3 @@ SUPABASE_URL=... SUPABASE_SERVICE_ROLE_KEY=... npm start
 ## Notes
 - This worker assumes the SQL functions added in `supabase/schema.sql` exist in your Supabase project (`claim_book_processing_job`, `update_book_processing_job`, `update_book_processing_fields`).
 - The worker uses the service role key and bypasses RLS for storage and table writes.
-

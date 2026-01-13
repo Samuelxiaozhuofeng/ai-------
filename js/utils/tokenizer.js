@@ -179,12 +179,11 @@ export async function buildTokenizedChapterWrapperWithMetaForLanguage(text, opti
   }
 
   try {
-    const { tokenizeJapaneseChapter } = await import('../tokenizers/japanese/japanese-tokenization-service.js');
-    const result = await tokenizeJapaneseChapter({
+    const { getJapaneseChapterTokens } = await import('../tokenizers/japanese/japanese-tokens-service.js');
+    const result = await getJapaneseChapterTokens({
       bookId,
       chapterId,
-      textHash,
-      paragraphs: paragraphPayload
+      textHash
     });
 
     const tokens = Array.isArray(result?.tokens) ? result.tokens : [];
@@ -210,12 +209,14 @@ export async function buildTokenizedChapterWrapperWithMetaForLanguage(text, opti
 
     return { wrapper, canonicalText };
   } catch (error) {
-    console.warn('Japanese tokenization failed, falling back to regex tokenizer:', error);
-    paragraphs.forEach((paragraphText) => {
-      const paragraphEl = document.createElement('p');
-      tokenizeParagraphInto(paragraphEl, paragraphText);
-      wrapper.appendChild(paragraphEl);
-    });
+    console.warn('Japanese tokens unavailable:', error);
+    wrapper.innerHTML = `
+            <div class="welcome-state">
+              <h2>日语分词结果未就绪</h2>
+              <p>该章节尚未完成后台处理，或当前设备无法从云端下载分词结果。</p>
+              <p>请稍后重试（需要登录并保持联网以拉取预处理 tokens）。</p>
+            </div>
+        `;
     return { wrapper, canonicalText };
   }
 }

@@ -1,25 +1,16 @@
 /**
  * Japanese Token Types and Constants
- * Defines token structure, versions, and utility functions
+ * Defines token structure, versions, and cache keys.
  */
 
 // Tokenizer version - increment when logic changes
-export const JA_TOKENIZER_VERSION = '1';
+export const JA_TOKENIZER_VERSION = '2';
 
-// Dictionary version - should match the vendored kuromoji dict
-export const JA_DICT_VERSION = 'ipadic-2.7.0';
+// Dictionary version - matches the Sudachi core dictionary used by the worker.
+export const JA_DICT_VERSION = 'sudachidict_core';
 
 // Tokenizer ID
-export const JA_TOKENIZER_ID = 'kuromoji+kuroshiro';
-
-/**
- * POS (Part of Speech) types that should NOT be treated as learnable words
- */
-export const NON_LEARNABLE_POS = new Set([
-  '助詞',     // Particles
-  '助動詞',   // Auxiliary verbs
-  '記号',     // Symbols/Punctuation
-]);
+export const JA_TOKENIZER_ID = 'sudachipy';
 
 /**
  * Token structure (TypeScript-style JSDoc)
@@ -47,41 +38,6 @@ export const NON_LEARNABLE_POS = new Set([
  * @property {string} createdAt - ISO timestamp
  * @property {JapaneseToken[]} tokens
  */
-
-/**
- * Determine if a token should be treated as a learnable word
- * @param {Object} tokenData - Raw token data from kuromoji
- * @returns {boolean}
- */
-export function isLearnableWord(tokenData) {
-  if (!tokenData.pos) return false;
-
-  // Filter out particles, auxiliary verbs, and symbols
-  if (NON_LEARNABLE_POS.has(tokenData.pos)) {
-    return false;
-  }
-
-  // Filter out single-character punctuation
-  if (tokenData.surface_form && tokenData.surface_form.length === 1) {
-    if (/[、。！？「」『』（）…・]/.test(tokenData.surface_form)) {
-      return false;
-    }
-  }
-
-  return true;
-}
-
-/**
- * Create a normalized lemma from token data
- * @param {Object} tokenData - Raw token data from kuromoji
- * @returns {string}
- */
-export function getLemma(tokenData) {
-  // Use basic_form if available, otherwise fall back to surface
-  return tokenData.basic_form && tokenData.basic_form !== '*'
-    ? tokenData.basic_form
-    : tokenData.surface_form;
-}
 
 /**
  * Validate token structure

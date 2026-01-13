@@ -1,13 +1,15 @@
-import kuromoji from 'kuromoji';
+import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
-import { canonicalizeText, hashCanonicalText, normalizeWord, splitParagraphs } from './text.js';
+import { canonicalizeText, hashCanonicalText, normalizeWord } from './text.js';
 
-const NON_LEARNABLE_POS = new Set(['助詞', '助動詞', '記号']);
+const NON_LEARNABLE_POS = new Set(['助詞', '助動詞', '補助記号', '空白']);
 
-export const JA_TOKENIZER_ID = 'kuromoji+kuroshiro';
-export const JA_TOKENIZER_VERSION = '1';
-export const JA_DICT_VERSION = 'ipadic-2.7.0';
+export const JA_TOKENIZER_ID = 'sudachipy';
+export const JA_TOKENIZER_VERSION = '2';
+export const JA_DICT_VERSION = 'sudachidict_core';
+
+const SUDACHI_SCRIPT_PATH = fileURLToPath(new URL('./tokenizers/sudachi_tokenizer.py', import.meta.url));
 
 /**
  * @param {any} tokenData
@@ -15,7 +17,7 @@ export const JA_DICT_VERSION = 'ipadic-2.7.0';
 function isLearnableWord(tokenData) {
   if (!tokenData?.pos) return false;
   if (NON_LEARNABLE_POS.has(tokenData.pos)) return false;
-  const surface = typeof tokenData.surface_form === 'string' ? tokenData.surface_form : '';
+  const surface = typeof tokenData.surface === 'string' ? tokenData.surface : '';
   if (surface && surface.length === 1 && /[、。！？「」『』（）…・]/.test(surface)) return false;
   return true;
 }
@@ -24,25 +26,59 @@ function isLearnableWord(tokenData) {
  * @param {any} tokenData
  */
 function getLemma(tokenData) {
-  const basic = tokenData?.basic_form;
+  const basic = tokenData?.lemma;
   if (typeof basic === 'string' && basic && basic !== '*') return basic;
-  const surface = tokenData?.surface_form;
+  const surface = tokenData?.surface;
   return typeof surface === 'string' ? surface : '';
 }
 
-/** @type {Promise<any> | null} */
-let tokenizerPromise = null;
-
-function ensureTokenizer() {
-  if (tokenizerPromise) return tokenizerPromise;
-  tokenizerPromise = new Promise((resolve, reject) => {
-    const dicPath = fileURLToPath(new URL('../node_modules/kuromoji/dict/', import.meta.url));
-    kuromoji.builder({ dicPath }).build((error, tokenizer) => {
-      if (error) reject(error);
-      else resolve(tokenizer);
+/**
+ * @param {string} text
+ * @returns {Promise<any[]>}
+ */
+async function sudachiTokenize(text) {
+  const safeText = typeof text === 'string' ? text : '';
+  return await new Promise((resolve, reject) => {
+    const python = spawn('python3', [SUDACHI_SCRIPT_PATH], {
+      stdio: ['pipe', 'pipe', 'pipe']
     });
+
+    let stdout = '';
+    let stderr = '';
+
+    python.stdout.setEncoding('utf8');
+    python.stderr.setEncoding('utf8');
+
+    python.stdout.on('data', (data) => {
+      stdout += data;
+    });
+
+    python.stderr.on('data', (data) => {
+      stderr += data;
+    });
+
+    python.on('error', (error) => reject(error));
+
+    python.on('close', (code) => {
+      if (code !== 0) {
+        reject(new Error(`Sudachi tokenizer failed (code=${code}): ${stderr || 'unknown error'}`));
+        return;
+      }
+      try {
+        const parsed = JSON.parse(stdout);
+        resolve(Array.isArray(parsed) ? parsed : []);
+      } catch (error) {
+        reject(new Error(`Failed to parse Sudachi tokenizer output: ${error?.message || String(error)}`));
+      }
+    });
+
+    try {
+      python.stdin.write(safeText);
+      python.stdin.end();
+    } catch (error) {
+      reject(error);
+    }
   });
-  return tokenizerPromise;
 }
 
 /**
@@ -50,75 +86,50 @@ function ensureTokenizer() {
  * @param {string} canonicalText
  */
 export async function tokenizeJapaneseCanonicalText(canonicalText) {
-  const tokenizer = await ensureTokenizer();
   const safeText = canonicalizeText(canonicalText);
   const textHash = hashCanonicalText(safeText);
-  const paragraphs = splitParagraphs(safeText);
 
   /** @type {Array<{surface: string, lemma: string, reading: string|null, pos: string|null, posDetail: string|null, isWord: boolean, start: number, end: number}>} */
   const out = [];
 
-  let offsetCursor = 0;
-  for (let i = 0; i < paragraphs.length; i++) {
-    const paragraphText = paragraphs[i];
-    const base = offsetCursor;
+  /** @type {any[]} */
+  const rawTokens = await sudachiTokenize(safeText);
 
-    /** @type {any[]} */
-    const rawTokens = tokenizer.tokenize(paragraphText) || [];
-    let cursor = 0;
+  for (const raw of rawTokens) {
+    if (!raw || typeof raw !== 'object') continue;
+    const surface = typeof raw.surface === 'string' ? raw.surface : '';
+    if (!surface) continue;
 
-    for (const raw of rawTokens) {
-      if (!raw || typeof raw !== 'object') continue;
-      const surface = typeof raw.surface_form === 'string' ? raw.surface_form : '';
-      if (!surface) continue;
+    const start = Number(raw.start);
+    const end = Number(raw.end);
+    if (!Number.isFinite(start) || !Number.isFinite(end) || start < 0 || end <= start) continue;
+    if (end > safeText.length) continue;
+    if (safeText.slice(start, end) !== surface) continue;
 
-      let startRel = null;
-      const wordPos = Number(raw.word_position);
-      if (Number.isFinite(wordPos) && wordPos >= 1) {
-        startRel = wordPos - 1;
-      } else {
-        const found = paragraphText.indexOf(surface, cursor);
-        if (found >= 0) startRel = found;
-      }
-      if (startRel == null || startRel < 0) continue;
-      const endRel = startRel + surface.length;
-      cursor = Math.max(cursor, endRel);
+    const lemmaRaw = getLemma(raw) || surface;
+    const normalizedLemma = normalizeWord(lemmaRaw) || normalizeWord(surface) || '';
+    if (!normalizedLemma) continue;
 
-      if (endRel > paragraphText.length) continue;
+    const reading = typeof raw.reading === 'string' && raw.reading && raw.reading !== '*'
+      ? raw.reading
+      : null;
+    const pos = typeof raw.pos === 'string' && raw.pos && raw.pos !== '*'
+      ? raw.pos
+      : null;
+    const posDetail = typeof raw.posDetail === 'string' && raw.posDetail && raw.posDetail !== '*'
+      ? raw.posDetail
+      : null;
 
-      const lemmaRaw = getLemma(raw) || surface;
-      const normalizedLemma = normalizeWord(lemmaRaw) || normalizeWord(surface) || '';
-      if (!normalizedLemma) continue;
-
-      const reading = typeof raw.reading === 'string' && raw.reading && raw.reading !== '*'
-        ? raw.reading
-        : null;
-      const pos = typeof raw.pos === 'string' && raw.pos && raw.pos !== '*'
-        ? raw.pos
-        : null;
-      const posDetail = typeof raw.pos_detail_1 === 'string' && raw.pos_detail_1 && raw.pos_detail_1 !== '*'
-        ? raw.pos_detail_1
-        : null;
-
-      const start = base + startRel;
-      const end = base + endRel;
-      if (safeText.slice(start, end) !== surface) {
-        continue;
-      }
-
-      out.push({
-        surface,
-        lemma: normalizedLemma,
-        reading,
-        pos,
-        posDetail,
-        isWord: Boolean(isLearnableWord(raw)),
-        start,
-        end
-      });
-    }
-
-    offsetCursor += paragraphText.length + (i < paragraphs.length - 1 ? 2 : 0);
+    out.push({
+      surface,
+      lemma: normalizedLemma,
+      reading,
+      pos,
+      posDetail,
+      isWord: Boolean(isLearnableWord(raw)),
+      start,
+      end
+    });
   }
 
   return {

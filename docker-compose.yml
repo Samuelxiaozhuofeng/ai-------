@@ -11,7 +11,9 @@ services:
       && uvicorn main:app --host 0.0.0.0 --port 8000"
 
   worker:
-    image: node:20-slim
+    build:
+      context: ./worker
+    image: intelligent-reader-worker
     working_dir: /app/worker
     volumes:
       - ./worker:/app/worker
