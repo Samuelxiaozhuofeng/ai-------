@@ -1,4 +1,9 @@
-import { buildTokenizedChapterWrapperWithMeta, renderTokenizedChapterContent } from '../../utils/tokenizer.js';
+import {
+  buildTokenizedChapterWrapperWithMeta,
+  buildTokenizedChapterWrapperWithMetaForLanguage,
+  hashCanonicalText,
+  renderTokenizedChapterContent
+} from '../../utils/tokenizer.js';
 import { updatePageProgressCloud } from '../../supabase/progress-repo.js';
 import { upsertBookVocabularyItems } from '../../supabase/vocabulary-repo.js';
 import { WORD_STATUSES } from '../../word-status.js';
@@ -14,6 +19,7 @@ export function createPaginationEngine({
   let pageProgressSaveTimer = null;
   /** @type {((index: number, options?: any) => Promise<void>) | null} */
   let loadChapter = null;
+  let renderRequestId = 0;
 
   function setLoadChapter(fn) {
     loadChapter = typeof fn === 'function' ? fn : null;
@@ -36,17 +42,6 @@ export function createPaginationEngine({
     paginationMeasure.style.height = `${heightPx}px`;
     paginationMeasure.innerHTML = '';
     return paginationMeasure;
-  }
-
-  function hashCanonicalText(value) {
-    const str = String(value || '');
-    let hash = 0x811c9dc5;
-    for (let i = 0; i < str.length; i++) {
-      hash ^= str.charCodeAt(i);
-      hash = Math.imul(hash, 0x01000193);
-    }
-    const hex = (hash >>> 0).toString(16).padStart(8, '0');
-    return `fnv1a32:${hex}`;
   }
 
   function findPageIndexByCharOffset(pageStartCharOffsets, charOffset) {
@@ -375,7 +370,63 @@ export function createPaginationEngine({
   }
 
   function renderChapterContent(chapterContent, options = {}) {
+    const language = (getCurrentBookLanguage() || 'en').toString().trim().toLowerCase();
+
     if (state.isPageFlipMode) {
+      if (language === 'ja') {
+        const requestId = ++renderRequestId;
+        const pageHeight = elements.readingContent.clientHeight || 520;
+        elements.readingContent.innerHTML = '<p class="loading">Tokenizing Japanese...</p>';
+
+        const bookId = state.currentBookId || null;
+        const chapterId = state.currentBook?.chapters?.[state.currentChapterIndex]?.id || null;
+
+        void (async () => {
+          try {
+            const { wrapper, canonicalText } = await buildTokenizedChapterWrapperWithMetaForLanguage(chapterContent, {
+              language: 'ja',
+              bookId,
+              chapterId
+            });
+            if (requestId !== renderRequestId) return;
+
+            const { pages, pageStartCharOffsets } = paginateTokenizedWrapper(wrapper, pageHeight);
+            state.chapterPages = pages;
+            state.pageStartCharOffsets = pageStartCharOffsets;
+            state.chapterTextHash = hashCanonicalText(canonicalText);
+
+            if (options?.startPage === 'last') {
+              state.currentPageIndex = Math.max(0, state.chapterPages.length - 1);
+            } else if (
+              typeof options?.startCharOffset === 'number' &&
+              typeof options?.chapterTextHash === 'string' &&
+              options.chapterTextHash &&
+              options.chapterTextHash === state.chapterTextHash
+            ) {
+              state.currentPageIndex = findPageIndexByCharOffset(state.pageStartCharOffsets, options.startCharOffset);
+            } else if (typeof options?.startPage === 'number') {
+              state.currentPageIndex = Math.min(Math.max(0, options.startPage), Math.max(0, state.chapterPages.length - 1));
+            } else {
+              state.currentPageIndex = 0;
+            }
+
+            renderCurrentPage('none');
+          } catch (error) {
+            console.warn('Japanese tokenization wrapper failed, falling back to regex:', error);
+            if (requestId !== renderRequestId) return;
+
+            const { wrapper, canonicalText } = buildTokenizedChapterWrapperWithMeta(chapterContent);
+            const { pages, pageStartCharOffsets } = paginateTokenizedWrapper(wrapper, pageHeight);
+            state.chapterPages = pages;
+            state.pageStartCharOffsets = pageStartCharOffsets;
+            state.chapterTextHash = hashCanonicalText(canonicalText);
+            state.currentPageIndex = 0;
+            renderCurrentPage('none');
+          }
+        })();
+        return;
+      }
+
       const pageHeight = elements.readingContent.clientHeight || 520;
       const { wrapper, canonicalText } = buildTokenizedChapterWrapperWithMeta(chapterContent);
       const { pages, pageStartCharOffsets } = paginateTokenizedWrapper(wrapper, pageHeight);
@@ -406,6 +457,38 @@ export function createPaginationEngine({
     state.currentPageIndex = 0;
     state.pageStartCharOffsets = [];
     state.chapterTextHash = null;
+
+    if (language === 'ja') {
+      const requestId = ++renderRequestId;
+      elements.readingContent.innerHTML = '<p class="loading">Tokenizing Japanese...</p>';
+      const bookId = state.currentBookId || null;
+      const chapterId = state.currentBook?.chapters?.[state.currentChapterIndex]?.id || null;
+
+      void (async () => {
+        try {
+          const { wrapper, canonicalText } = await buildTokenizedChapterWrapperWithMetaForLanguage(chapterContent, {
+            language: 'ja',
+            bookId,
+            chapterId
+          });
+          if (requestId !== renderRequestId) return;
+          elements.readingContent.innerHTML = '';
+          elements.readingContent.appendChild(wrapper);
+          state.chapterTextHash = hashCanonicalText(canonicalText);
+          applyWordStatusesToContainer(elements.readingContent);
+          updatePageControls();
+        } catch (error) {
+          console.warn('Japanese tokenization wrapper failed, falling back to regex:', error);
+          if (requestId !== renderRequestId) return;
+          renderTokenizedChapterContent(elements.readingContent, chapterContent);
+          applyWordStatusesToContainer(elements.readingContent);
+          updatePageControls();
+        }
+      })();
+
+      return;
+    }
+
     renderTokenizedChapterContent(elements.readingContent, chapterContent);
     updatePageControls();
   }

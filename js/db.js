@@ -6,12 +6,13 @@
 import { makeVocabId, normalizeWord } from './word-status.js';
 
 const DB_NAME = 'LanguageReaderDB';
-const DB_VERSION = 5;
+const DB_VERSION = 6;
 const STORE_BOOKS = 'books';
 const STORE_VOCABULARY = 'vocabulary';
 const STORE_PROGRESS = 'progress';
 const STORE_GLOBAL_VOCAB = 'globalVocabulary';
 const STORE_EPUB_FILES = 'epubFiles';
+const STORE_TOKENIZATION_CACHE = 'tokenizationCache';
 
 let db = null;
 
@@ -92,6 +93,16 @@ export async function initDB() {
                 console.log('📦 Created epubFiles store');
             }
 
+            // Create tokenization cache store (Japanese tokens per chapter)
+            if (oldVersion < 6 && !database.objectStoreNames.contains(STORE_TOKENIZATION_CACHE)) {
+                const store = database.createObjectStore(STORE_TOKENIZATION_CACHE, { keyPath: 'id' });
+                store.createIndex('bookId', 'bookId', { unique: false });
+                store.createIndex('chapterId', 'chapterId', { unique: false });
+                store.createIndex('bookId_chapterId', ['bookId', 'chapterId'], { unique: false });
+                store.createIndex('createdAt', 'createdAt', { unique: false });
+                console.log('🈶 Created tokenizationCache store');
+            }
+
             // Ensure indexes exist for upgraded stores
             if (transaction && database.objectStoreNames.contains(STORE_BOOKS)) {
                 const store = transaction.objectStore(STORE_BOOKS);
@@ -117,6 +128,22 @@ export async function initDB() {
                 }
                 if (!store.indexNames.contains('status_language_due')) {
                     store.createIndex('status_language_due', ['status', 'language', 'due'], { unique: false });
+                }
+            }
+
+            if (transaction && database.objectStoreNames.contains(STORE_TOKENIZATION_CACHE)) {
+                const store = transaction.objectStore(STORE_TOKENIZATION_CACHE);
+                if (!store.indexNames.contains('bookId')) {
+                    store.createIndex('bookId', 'bookId', { unique: false });
+                }
+                if (!store.indexNames.contains('chapterId')) {
+                    store.createIndex('chapterId', 'chapterId', { unique: false });
+                }
+                if (!store.indexNames.contains('bookId_chapterId')) {
+                    store.createIndex('bookId_chapterId', ['bookId', 'chapterId'], { unique: false });
+                }
+                if (!store.indexNames.contains('createdAt')) {
+                    store.createIndex('createdAt', 'createdAt', { unique: false });
                 }
             }
 
