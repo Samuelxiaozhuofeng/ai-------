@@ -7,10 +7,20 @@ let lastDicPath = null;
 function loadVendorScripts() {
   // Relative to: js/tokenizers/japanese/japanese-tokenizer.worker.js
   importScripts(
-    '../../../vendor/kuromoji/kuromoji.js',
-    '../../../vendor/kuroshiro/kuroshiro.js',
-    '../../../vendor/kuroshiro/kuroshiro-analyzer-kuromoji.js'
+    '../../../vendor/kuromoji/kuromoji.js'
   );
+}
+
+function debug(message, extra = null) {
+  try {
+    self.postMessage({
+      type: 'debug',
+      message: String(message || ''),
+      extra: extra ?? null
+    });
+  } catch {
+    // ignore
+  }
 }
 
 function ensureTokenizer(dicPath) {
@@ -39,9 +49,11 @@ function ensureTokenizer(dicPath) {
       return;
     }
 
+    debug('kuromoji:build:start', { dicPath: path });
     self.kuromoji.builder({ dicPath: path }).build((error, builtTokenizer) => {
       if (error) {
         initPromise = null;
+        debug('kuromoji:build:error', { error: error?.message || String(error) });
         reject(error);
         return;
       }
@@ -49,11 +61,13 @@ function ensureTokenizer(dicPath) {
       tokenizer = builtTokenizer || null;
       if (!tokenizer?.tokenize) {
         initPromise = null;
+        debug('kuromoji:build:error', { error: 'tokenizer missing tokenize()' });
         reject(new Error('Kuromoji tokenizer build failed'));
         return;
       }
 
       // Kuroshiro is optional in MVP; initialize lazily later if needed.
+      debug('kuromoji:build:ready');
       resolve(tokenizer);
     });
   });
@@ -127,6 +141,7 @@ async function handleInit(message) {
   }
   if (lastDicPath) {
     // Fire-and-forget warm-up.
+    debug('kuromoji:warmup:start', { dicPath: lastDicPath });
     void ensureTokenizer(lastDicPath);
   }
   return { ok: true, warming: Boolean(lastDicPath) };
@@ -141,6 +156,7 @@ async function handleTokenize(message) {
   /** @type {any[]} */
   const all = [];
 
+  debug('tokenize:start', { paragraphs: paragraphs.length });
   for (const para of paragraphs) {
     const text = typeof para?.text === 'string' ? para.text : '';
     if (!text) continue;
@@ -149,6 +165,7 @@ async function handleTokenize(message) {
     const withOffsets = attachOffsets(text, raw, startOffset);
     all.push(...withOffsets);
   }
+  debug('tokenize:done', { tokens: all.length });
 
   return { tokens: all };
 }

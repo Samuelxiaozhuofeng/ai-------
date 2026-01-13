@@ -11,7 +11,12 @@ import {
 
 // First-time Kuromoji init loads and inflates multiple .gz dictionary files and can be slow on mobile.
 const DEFAULT_INIT_TIMEOUT_MS = 90000;
-const DEFAULT_TOKENIZE_TIMEOUT_MS = 90000;
+// Tokenization may include first-time dict downloads + decompression and can take minutes on slow devices/networks.
+const DEFAULT_TOKENIZE_TIMEOUT_MS = 8 * 60 * 1000;
+
+const MAX_SEGMENT_CHARS = 8000;
+const MAX_BATCH_CHARS = 50000;
+const MAX_BATCH_SEGMENTS = 24;
 
 let worker = null;
 let workerInitPromise = null;
@@ -44,11 +49,16 @@ function ensureWorker() {
   worker = new Worker(new URL('./japanese-tokenizer.worker.js', import.meta.url));
   worker.onmessage = (event) => {
     const message = event?.data || null;
+    if (message?.type === 'debug') {
+      const msg = typeof message?.message === 'string' ? message.message : 'debug';
+      console.debug('[ja-tokenizer]', msg, message?.extra || null);
+      return;
+    }
     const requestId = Number(message?.requestId) || 0;
     const entry = pending.get(requestId) || null;
     if (!entry) return;
     pending.delete(requestId);
-    if (entry.timer != null) clearTimeout(entry.timer);
+    if (entry.timer != null) globalThis.clearTimeout(entry.timer);
 
     if (message?.type === 'error') {
       entry.reject(new Error(message?.error || 'Japanese tokenizer worker error'));
@@ -94,8 +104,10 @@ async function ensureWorkerReady() {
 
   workerInitPromise = (async () => {
     try {
+      console.debug('[ja-tokenizer] init:start');
       const response = await postToWorker('init', {}, DEFAULT_INIT_TIMEOUT_MS);
       if (response?.type !== 'ready') throw new Error('Japanese tokenizer worker init failed');
+      console.debug('[ja-tokenizer] init:ready', { warming: Boolean(response?.warming) });
       return true;
     } catch (error) {
       terminateWorker();
@@ -157,23 +169,42 @@ function normalizeWorkerTokens(rawTokens) {
 }
 
 /**
- * @param {import('./japanese-token-types.js').JapaneseToken[]} tokens
- * @returns {import('./japanese-token-types.js').JapaneseToken[]}
+ * Split very long segments to reduce postMessage payload size and avoid long blocking tokenization on huge chapters.
+ * Attempts to split on Japanese punctuation before falling back to hard splits.
+ * @param {string} text
+ * @param {number} startOffset
+ * @returns {{text: string, startOffset: number}[]}
  */
-function sortAndDedupeTokens(tokens) {
-  const sorted = Array.isArray(tokens) ? [...tokens] : [];
-  sorted.sort((a, b) => (a.start - b.start) || (a.end - b.end));
+function splitSegment(text, startOffset) {
+  const safeText = typeof text === 'string' ? text : '';
+  if (!safeText) return [];
+  const base = Math.max(0, Number(startOffset) || 0);
+  if (safeText.length <= MAX_SEGMENT_CHARS) return [{ text: safeText, startOffset: base }];
 
-  /** @type {import('./japanese-token-types.js').JapaneseToken[]} */
+  /** @type {{text: string, startOffset: number}[]} */
   const out = [];
-  let lastKey = '';
-  for (const token of sorted) {
-    if (!isValidToken(token)) continue;
-    const key = `${token.start}:${token.end}:${token.lemma}:${token.surface}`;
-    if (key === lastKey) continue;
-    lastKey = key;
-    out.push(token);
+  let cursor = 0;
+  while (cursor < safeText.length) {
+    const remaining = safeText.length - cursor;
+    if (remaining <= MAX_SEGMENT_CHARS) {
+      out.push({ text: safeText.slice(cursor), startOffset: base + cursor });
+      break;
+    }
+
+    const windowEnd = cursor + MAX_SEGMENT_CHARS;
+    const probe = safeText.slice(cursor, windowEnd);
+    let splitAt = -1;
+    splitAt = Math.max(splitAt, probe.lastIndexOf('。'));
+    splitAt = Math.max(splitAt, probe.lastIndexOf('！'));
+    splitAt = Math.max(splitAt, probe.lastIndexOf('？'));
+    splitAt = Math.max(splitAt, probe.lastIndexOf('、'));
+    splitAt = Math.max(splitAt, probe.lastIndexOf('\n'));
+
+    const chunkLen = splitAt >= 0 ? (splitAt + 1) : MAX_SEGMENT_CHARS;
+    out.push({ text: safeText.slice(cursor, cursor + chunkLen), startOffset: base + cursor });
+    cursor += chunkLen;
   }
+
   return out;
 }
 
@@ -204,21 +235,61 @@ export async function tokenizeJapaneseChapter({ bookId, chapterId, textHash, par
 
   await ensureWorkerReady();
 
-  const paraPayload = Array.isArray(paragraphs)
-    ? paragraphs.map((p) => ({
-      text: typeof p?.text === 'string' ? p.text : '',
-      startOffset: Number(p?.startOffset) || 0
-    }))
-    : [];
+  /** @type {{text: string, startOffset: number}[]} */
+  const segments = [];
+  if (Array.isArray(paragraphs)) {
+    paragraphs.forEach((p) => {
+      const text = typeof p?.text === 'string' ? p.text : '';
+      const startOffset = Number(p?.startOffset) || 0;
+      if (!text) return;
+      splitSegment(text, startOffset).forEach((piece) => segments.push(piece));
+    });
+  }
 
-  const response = await postToWorker(
-    'tokenize',
-    { paragraphs: paraPayload },
-    DEFAULT_TOKENIZE_TIMEOUT_MS
-  );
+  /** @type {import('./japanese-token-types.js').JapaneseToken[]} */
+  const normalized = [];
+  let segmentIndex = 0;
+  const startedAt = Date.now();
 
-  const rawTokens = Array.isArray(response?.tokens) ? response.tokens : [];
-  const normalized = sortAndDedupeTokens(normalizeWorkerTokens(rawTokens));
+  while (segmentIndex < segments.length) {
+    /** @type {{text: string, startOffset: number}[]} */
+    const batch = [];
+    let batchChars = 0;
+
+    while (
+      segmentIndex < segments.length
+      && batch.length < MAX_BATCH_SEGMENTS
+      && batchChars < MAX_BATCH_CHARS
+    ) {
+      const seg = segments[segmentIndex];
+      const segText = seg?.text || '';
+      if (!segText) {
+        segmentIndex += 1;
+        continue;
+      }
+      if (batch.length > 0 && (batchChars + segText.length) > MAX_BATCH_CHARS) break;
+      batch.push({ text: segText, startOffset: seg.startOffset });
+      batchChars += segText.length;
+      segmentIndex += 1;
+    }
+
+    const response = await postToWorker('tokenize', { paragraphs: batch }, DEFAULT_TOKENIZE_TIMEOUT_MS);
+    const rawTokens = Array.isArray(response?.tokens) ? response.tokens : [];
+    const batchTokens = normalizeWorkerTokens(rawTokens);
+    batchTokens.forEach((token) => {
+      if (isValidToken(token)) normalized.push(token);
+    });
+
+    if (segmentIndex < segments.length) {
+      console.debug('[ja-tokenizer] progress', {
+        segmentsDone: segmentIndex,
+        segmentsTotal: segments.length,
+        tokens: normalized.length,
+        elapsedMs: Date.now() - startedAt
+      });
+      await new Promise((r) => globalThis.setTimeout(r, 0));
+    }
+  }
 
   if (normalized.length === 0) {
     throw new Error('Japanese tokenizer returned no tokens');
