@@ -1,0 +1,19 @@
+{
+  "name": "intelligent-reader-worker",
+  "private": true,
+  "type": "module",
+  "version": "0.1.0",
+  "description": "Supabase-backed EPUB processing worker (TOC extraction + Japanese tokenization).",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.48.1",
+    "fast-xml-parser": "^4.5.1",
+    "jsdom": "^24.0.0",
+    "jszip": "^3.10.1",
+    "kuromoji": "^0.1.2"
+  }
+}
+

@@ -99,6 +99,32 @@ function postToWorker(type, payload, timeoutMs) {
   });
 }
 
+async function tryHydrateTokensFromCloud({ bookId, chapterId, expectedTextHash }) {
+  try {
+    const { getCloudContext, isOnline } = await import('../../supabase/cloud-context.js');
+    if (!isOnline()) return false;
+    const ctx = await getCloudContext();
+    if (!ctx?.user?.id) return false;
+
+    const { downloadJapaneseTokens } = await import('../../supabase/processed-books-service.js');
+    const payload = await downloadJapaneseTokens({ bookId, chapterId });
+    const textHash = typeof payload?.textHash === 'string' ? payload.textHash : '';
+    const tokens = Array.isArray(payload?.tokens) ? payload.tokens : [];
+
+    if (!textHash || tokens.length === 0) return false;
+    if (expectedTextHash && textHash !== expectedTextHash) {
+      throw new Error(`Cloud Japanese tokens textHash mismatch (${textHash} != ${expectedTextHash})`);
+    }
+
+    await saveJapaneseTokensToCache(bookId, chapterId, textHash, tokens);
+    return true;
+  } catch (error) {
+    // If we got a concrete mismatch, surface it; otherwise allow fallback to local worker tokenization.
+    if (String(error?.message || '').includes('textHash mismatch')) throw error;
+    return false;
+  }
+}
+
 async function ensureWorkerReady() {
   if (workerInitPromise) return workerInitPromise;
 
@@ -231,6 +257,15 @@ export async function tokenizeJapaneseChapter({ bookId, chapterId, textHash, par
   const cached = await getJapaneseTokenCacheEntry(safeBookId, safeChapterId, safeHash);
   if (cached?.tokens?.length) {
     return { tokens: cached.tokens, fromCache: true };
+  }
+
+  // Prefer cloud precomputed tokens (no Kuromoji dict downloads in browser).
+  const hydrated = await tryHydrateTokensFromCloud({ bookId: safeBookId, chapterId: safeChapterId, expectedTextHash: safeHash });
+  if (hydrated) {
+    const nextCached = await getJapaneseTokenCacheEntry(safeBookId, safeChapterId, safeHash);
+    if (nextCached?.tokens?.length) {
+      return { tokens: nextCached.tokens, fromCache: true };
+    }
   }
 
   await ensureWorkerReady();

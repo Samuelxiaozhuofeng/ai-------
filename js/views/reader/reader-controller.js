@@ -304,8 +304,18 @@ export function createReaderController(elements) {
         } catch (error) {
           console.warn('Failed to fetch book from cloud:', error);
         }
+      } else if (!Array.isArray(book?.chapters) || book.chapters.length === 0) {
+        try {
+          await ensureLocalBookCached(bookId);
+          book = await getBook(bookId);
+        } catch (error) {
+          console.warn('Failed to refresh placeholder book from cloud:', error);
+        }
       }
       if (!book) throw new Error('书籍未找到');
+      if (!Array.isArray(book?.chapters) || book.chapters.length === 0) {
+        throw new Error('书籍尚未云端处理完成（章节为空）');
+      }
 
       state.currentBook = book;
       state.currentBookId = bookId;

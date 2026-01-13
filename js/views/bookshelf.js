@@ -1,10 +1,8 @@
-import { parseEpub } from '../epub-parser.js';
 import { SUPPORTED_LANGUAGES, getFsrsSettings } from '../storage.js';
 import {
   countDueCards,
   countDueCardsByLanguage,
   deleteBook as deleteBookFromDB,
-  generateBookHash,
   getAllBooks,
   getBook,
   renameBook as renameBookInDB,
@@ -12,12 +10,15 @@ import {
 } from '../db.js';
 import { showNotification } from '../ui/notifications.js';
 import { hideLoading, showLoading } from '../ui/loading.js';
+import { createProcessingModal } from '../ui/processing-modal.js';
 import { escapeHtml } from '../utils/html.js';
 import { ModalManager, createAsyncChoiceModal } from '../ui/modal-manager.js';
+import { computeBookIdFromFile } from '../utils/file-hash.js';
 import { getLanguageFilter, setLanguageFilter } from '../core/language-filter.js';
 import { getSessionUser } from '../supabase/session.js';
 import { listUserEPUBs, uploadEPUB } from '../supabase/epub-service.js';
 import { updateRemoteBook } from '../supabase/books-service.js';
+import { cancelBookProcessingJob, getBookProcessingJob, retryBookProcessingJob, waitForBookProcessingJob } from '../supabase/book-processing-jobs.js';
 import { autoSyncIfNeeded } from '../sync-service.js';
 
 let viewMode = 'grid'; // 'grid' | 'list'
@@ -40,6 +41,7 @@ let navigation = {
  * @param {import('../ui/dom-refs.js').elements} elements
  */
 export function createBookshelfController(elements) {
+  const processingModal = createProcessingModal();
   const renameModalManager = new ModalManager(elements.renameModal, { focusTarget: elements.newBookTitle });
   renameModalManager.registerCloseButton(elements.closeRenameBtn);
   renameModalManager.registerCloseButton(elements.cancelRenameBtn);
@@ -96,7 +98,12 @@ export function createBookshelfController(elements) {
       currentChapter: typeof row.current_chapter === 'number' ? row.current_chapter : Number(row.current_chapter || 0),
       storagePath: row.storage_path || null,
       storageUpdatedAt: row.file_updated_at || row.updated_at || null,
-      updatedAt: row.updated_at || null
+      updatedAt: row.updated_at || null,
+      processedPath: row.processed_path || null,
+      processingStatus: row.processing_status || 'ready',
+      processingProgress: typeof row.processing_progress === 'number' ? row.processing_progress : Number(row.processing_progress || 0),
+      processingStage: row.processing_stage || null,
+      processingError: row.processing_error || null
     };
   }
 
@@ -123,6 +130,18 @@ export function createBookshelfController(elements) {
     return '';
   }
 
+  function computeProcessingTag(book) {
+    const status = String(book?.processingStatus || 'ready');
+    if (!status || status === 'ready') return '';
+    const progress = Math.max(0, Math.min(100, Number(book?.processingProgress) || 0));
+    const label = status === 'error'
+      ? '处理失败'
+      : status === 'cancelled'
+        ? '已取消'
+        : `处理中 ${progress}%`;
+    return `<span class="badge" style="margin-left: 6px;">${label}</span>`;
+  }
+
   function updateBookNode(el, book, mode) {
     if (!el || !book) return;
     const renderKey = [
@@ -131,13 +150,15 @@ export function createBookshelfController(elements) {
       String(book.currentChapter || 0),
       String(book.lastReadAt || ''),
       String(book.chapterCount || 0),
+      String(book.processingStatus || ''),
+      String(book.processingProgress || 0),
       book.localOnly ? '1' : '0',
       book.isCached ? '1' : '0'
     ].join('|');
     if (el.dataset.renderKey === renderKey) return;
     el.dataset.renderKey = renderKey;
 
-    const titleHtml = `${escapeHtml(book.title || '')}${computeSyncTag(book)}`;
+    const titleHtml = `${escapeHtml(book.title || '')}${computeSyncTag(book)}${computeProcessingTag(book)}`;
     const progressPercent = getProgressPercent(book);
 
     if (mode === 'grid') {
@@ -214,6 +235,8 @@ export function createBookshelfController(elements) {
         String(book.currentChapter || 0),
         String(book.lastReadAt || ''),
         String(book.chapterCount || 0),
+        String(book.processingStatus || ''),
+        String(book.processingProgress || 0),
         book.localOnly ? '1' : '0',
         book.isCached ? '1' : '0'
       ].join('|');
@@ -281,8 +304,10 @@ export function createBookshelfController(elements) {
 
       if (localIdSet) next.isCached = localIdSet.has(id);
 
-      const prevKey = prev ? JSON.stringify({ t: prev.title, c: prev.cover, ch: prev.currentChapter, lr: prev.lastReadAt, cc: prev.chapterCount, lo: prev.localOnly, ic: prev.isCached }) : '';
-      const nextKey = JSON.stringify({ t: next.title, c: next.cover, ch: next.currentChapter, lr: next.lastReadAt, cc: next.chapterCount, lo: next.localOnly, ic: next.isCached });
+      const prevKey = prev
+        ? JSON.stringify({ t: prev.title, c: prev.cover, ch: prev.currentChapter, lr: prev.lastReadAt, cc: prev.chapterCount, ps: prev.processingStatus, pp: prev.processingProgress, lo: prev.localOnly, ic: prev.isCached })
+        : '';
+      const nextKey = JSON.stringify({ t: next.title, c: next.cover, ch: next.currentChapter, lr: next.lastReadAt, cc: next.chapterCount, ps: next.processingStatus, pp: next.processingProgress, lo: next.localOnly, ic: next.isCached });
       if (!prev || prevKey !== nextKey) changedIds.add(id);
       booksById.set(id, next);
     }
@@ -448,6 +473,7 @@ export function createBookshelfController(elements) {
 
   function renderBookItemHtml(book, mode, index) {
     if (!book) return '';
+    const processingTag = computeProcessingTag(book);
     const syncTag = book.localOnly
       ? `<span class="badge" style="margin-left: 6px;">本地</span>`
       : book.storagePath && !book.isCached
@@ -461,8 +487,8 @@ export function createBookshelfController(elements) {
                   <button class="book-menu-btn" data-book-id="${book.id}">⋮</button>
               </div>
               <div class="book-card-info">
-                  <div class="book-card-title" title="${escapeHtml(book.title)}">${escapeHtml(book.title)}${syncTag}</div>
-                  <div class="book-card-meta">${book.chapterCount} 章</div>
+                  <div class="book-card-title" title="${escapeHtml(book.title)}">${escapeHtml(book.title)}${syncTag}${processingTag}</div>
+                  <div class="book-card-meta">${book.chapterCount || 0} 章</div>
                   <div class="book-progress-bar">
                       <div class="book-progress-fill" style="width: ${getProgressPercent(book)}%"></div>
                   </div>
@@ -478,9 +504,9 @@ export function createBookshelfController(elements) {
               ${getBookCoverHtml(book, 'list')}
           </div>
           <div class="book-list-info">
-              <div class="book-list-title" title="${escapeHtml(book.title)}">${escapeHtml(book.title)}${syncTag}</div>
+              <div class="book-list-title" title="${escapeHtml(book.title)}">${escapeHtml(book.title)}${syncTag}${processingTag}</div>
               <div class="book-list-meta">
-                  <span>${book.chapterCount} 章</span>
+                  <span>${book.chapterCount || 0} 章</span>
                   <span>•</span>
                   <span>阅读进度: ${Math.round(progressPercent)}%</span>
                   <div class="book-list-progress">
@@ -681,7 +707,14 @@ export function createBookshelfController(elements) {
     const card = event.target?.closest?.('[data-book-id]');
     if (!card || !elements.booksContainer?.contains?.(card)) return;
     const bookId = card.dataset.bookId;
-    if (bookId) navigation.openBook(bookId);
+    if (!bookId) return;
+    const book = booksById.get(bookId) || null;
+    const status = String(book?.processingStatus || 'ready');
+    if (status && status !== 'ready') {
+      void openProcessingAndMaybeOpenBook(bookId, { title: book?.title || '' });
+      return;
+    }
+    navigation.openBook(bookId);
   }
 
   function openRenameModal() {
@@ -767,22 +800,21 @@ export function createBookshelfController(elements) {
     if (!file) return;
 
     try {
-      if (typeof window !== 'undefined' && typeof window.JSZip === 'undefined') {
-        showNotification('导入失败：JSZip 未加载（请确保网络可访问 CDN，或将 JSZip 放到本地引用）', 'error');
-        elements.fileInput.value = '';
-        return;
-      }
-
       const selectedLanguage = await promptImportLanguage(file);
       if (!selectedLanguage) {
         elements.fileInput.value = '';
         return;
       }
 
-      showLoading('正在解析 EPUB...');
+      const user = await getSessionUser();
+      if (!user) {
+        showNotification('请先登录后再导入（需要云端预处理）', 'error');
+        elements.fileInput.value = '';
+        return;
+      }
 
-      const parsedBook = await parseEpub(file);
-      const bookId = generateBookHash(parsedBook.title + parsedBook.chapters[0]?.content.substring(0, 100));
+      showLoading('正在上传到云端并排队处理...');
+      const bookId = await computeBookIdFromFile(file);
 
       const existingBook = await getBook(bookId);
       if (existingBook) {
@@ -795,52 +827,51 @@ export function createBookshelfController(elements) {
 
       await saveBook({
         id: bookId,
-        title: parsedBook.title,
-        cover: parsedBook.cover,
-        chapters: parsedBook.chapters,
-        chapterCount: parsedBook.chapters.length,
+        title: file.name.replace(/\.epub$/i, ''),
+        cover: null,
+        chapters: [],
+        chapterCount: 0,
         currentChapter: 0,
         addedAt: new Date().toISOString(),
         lastReadAt: new Date().toISOString(),
-        language: selectedLanguage
+        language: selectedLanguage,
+        processingStatus: 'queued',
+        processingProgress: 0
       });
 
-      const user = await getSessionUser();
-      if (user) {
-        try {
-          showLoading('正在上传到云端...');
-          const remote = await uploadEPUB(file, {
-            bookId,
-            title: parsedBook.title,
-            cover: parsedBook.cover,
-            language: selectedLanguage,
-            chapterCount: parsedBook.chapters.length
-          });
-          await saveBook({
-            id: bookId,
-            title: parsedBook.title,
-            cover: parsedBook.cover,
-            chapters: parsedBook.chapters,
-            chapterCount: parsedBook.chapters.length,
-            currentChapter: 0,
-            addedAt: new Date().toISOString(),
-            lastReadAt: new Date().toISOString(),
-            language: selectedLanguage,
-            storagePath: remote?.storage_path || null,
-            storageUpdatedAt: remote?.file_updated_at || remote?.updated_at || new Date().toISOString()
-          });
-        } catch (error) {
-          console.warn('Failed to upload EPUB to Supabase:', error);
-          showNotification('云端上传失败（已保留本地副本）: ' + (error?.message || String(error)), 'error');
-        }
-      }
+      const remote = await uploadEPUB(file, {
+        bookId,
+        title: file.name.replace(/\.epub$/i, ''),
+        cover: null,
+        language: selectedLanguage,
+        chapterCount: null
+      });
+
+      await saveBook({
+        id: bookId,
+        title: remote?.title || file.name.replace(/\.epub$/i, ''),
+        cover: remote?.cover || null,
+        chapters: [],
+        chapterCount: 0,
+        currentChapter: 0,
+        addedAt: new Date().toISOString(),
+        lastReadAt: new Date().toISOString(),
+        language: selectedLanguage,
+        storagePath: remote?.storage_path || null,
+        storageUpdatedAt: remote?.file_updated_at || remote?.updated_at || new Date().toISOString(),
+        processedPath: remote?.processed_path || null,
+        processingStatus: remote?.processing_status || 'queued',
+        processingProgress: typeof remote?.processing_progress === 'number' ? remote.processing_progress : Number(remote?.processing_progress || 0),
+        processingStage: remote?.processing_stage || null,
+        processingError: remote?.processing_error || null
+      });
 
       hideLoading();
-      showNotification('书籍导入成功', 'success');
+      showNotification('已上传，开始云端处理…', 'success');
       elements.fileInput.value = '';
 
       await refreshBookshelf();
-      navigation.openBook(bookId);
+      void openProcessingAndMaybeOpenBook(bookId, { title: remote?.title || file.name.replace(/\.epub$/i, '') });
     } catch (error) {
       hideLoading();
       console.error('Failed to import file:', error);
@@ -849,10 +880,77 @@ export function createBookshelfController(elements) {
     }
   }
 
+  async function openProcessingAndMaybeOpenBook(bookId, { title = '' } = {}) {
+    const safeBookId = String(bookId || '').trim();
+    if (!safeBookId) return;
+
+    let closed = false;
+    let background = false;
+
+    const modalTitle = title ? `云端处理中：《${title}》` : '云端处理中…';
+    processingModal.open({
+      title: modalTitle,
+      onAction: (action) => {
+        if (action === 'wait') {
+          background = true;
+          closed = true;
+          processingModal.close();
+          return;
+        }
+        if (action === 'close') {
+          closed = true;
+          processingModal.close();
+          return;
+        }
+        if (action === 'cancel') {
+          void cancelBookProcessingJob(safeBookId).catch((e) => {
+            showNotification(`取消失败: ${e?.message || String(e)}`, 'error');
+          });
+          return;
+        }
+        if (action === 'retry') {
+          void retryBookProcessingJob(safeBookId).catch((e) => {
+            showNotification(`重试失败: ${e?.message || String(e)}`, 'error');
+          });
+        }
+      }
+    });
+
+    while (!closed) {
+      const job = await getBookProcessingJob(safeBookId).catch(() => null);
+      processingModal.update({
+        status: job?.status || 'queued',
+        progress: job?.progress ?? 0,
+        stage: job?.stage || '',
+        error: job?.error || null
+      });
+
+      const status = String(job?.status || '');
+      if (status === 'done') {
+        processingModal.update({ status: 'done', progress: 100, stage: 'done', error: null });
+        processingModal.close();
+        await refreshBookshelf();
+        navigation.openBook(safeBookId);
+        return;
+      }
+
+      await new Promise((r) => setTimeout(r, 1200));
+    }
+
+    if (background) {
+      const result = await waitForBookProcessingJob(safeBookId);
+      if (result?.ok) {
+        showNotification('云端处理完成', 'success');
+        await refreshBookshelf();
+      }
+    }
+  }
+
   function handleEscape() {
     renameModalManager.close();
     deleteModalManager.close();
     languageSelectChoice.close(null);
+    processingModal.close();
     hideContextMenu();
     hideHeaderMenu();
   }

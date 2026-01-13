@@ -1,6 +1,7 @@
 import { cacheEpub, deleteCachedEpub, getCachedEpub } from '../db.js';
 import { getSupabaseClient, isSupabaseConfigured } from './client.js';
 import { getSessionUser } from './session.js';
+import { upsertBookProcessingJob } from './book-processing-jobs.js';
 
 const BUCKET = 'epubs';
 
@@ -34,7 +35,7 @@ export async function uploadEPUB(file, metadata) {
   if (!info.bookId) throw new Error('Missing bookId');
   if (!(file instanceof File)) throw new Error('Invalid file');
 
-  const path = `${user.id}/${info.bookId}.epub`;
+  const path = `${user.id}/${info.bookId}/source.epub`;
   const { error: uploadError } = await supabase.storage.from(BUCKET).upload(path, file, {
     upsert: true,
     contentType: file.type || 'application/epub+zip'
@@ -50,8 +51,13 @@ export async function uploadEPUB(file, metadata) {
     language: info.language,
     chapter_count: info.chapterCount,
     storage_path: path,
+    processed_path: null,
     file_size: typeof file.size === 'number' ? file.size : null,
     file_updated_at: nowIso,
+    processing_status: 'queued',
+    processing_progress: 0,
+    processing_stage: 'queued',
+    processing_error: null,
     updated_at: nowIso
   };
 
@@ -61,6 +67,8 @@ export async function uploadEPUB(file, metadata) {
     .select('*')
     .single();
   if (error) throw error;
+
+  await upsertBookProcessingJob({ bookId: info.bookId, language: info.language, sourcePath: path });
   return data;
 }
 
@@ -107,13 +115,37 @@ export async function deleteEPUB(filePath) {
   const path = String(filePath || '').trim();
   if (!path) return true;
 
-  const { error: storageError } = await supabase.storage.from(BUCKET).remove([path]);
-  if (storageError) throw storageError;
+  // Best-effort delete: for folder layout "<user>/<book>/...", remove processed artifacts too.
+  const parts = path.split('/').filter(Boolean);
+  const isFolderLayout = parts.length >= 3 && parts[0] === user.id;
+  const bookId = isFolderLayout ? parts[1] : null;
+
+  const removePaths = new Set([path]);
+  if (bookId) {
+    removePaths.add(`${user.id}/${bookId}/processed/manifest.json.gz`);
+
+    const tokensPrefix = `${user.id}/${bookId}/processed/tokens`;
+    const { data: listed, error: listError } = await supabase.storage.from(BUCKET).list(tokensPrefix, { limit: 2000 });
+    if (listError) throw listError;
+    (listed || []).forEach((it) => {
+      if (it?.name) removePaths.add(`${tokensPrefix}/${it.name}`);
+    });
+  }
+
+  const { error: storageError } = await supabase.storage.from(BUCKET).remove(Array.from(removePaths));
+  if (storageError) {
+    const msg = storageError?.message || String(storageError);
+    // Deleting a processed book may include a missing source.epub (already deleted by worker).
+    if (!/not found/i.test(msg)) throw storageError;
+  }
 
   const { error: dbError } = await supabase.from('books').delete().eq('user_id', user.id).eq('storage_path', path);
   if (dbError) throw dbError;
 
+  if (bookId) {
+    await supabase.from('book_processing_jobs').delete().eq('user_id', user.id).eq('book_id', bookId);
+  }
+
   await deleteCachedEpub(path).catch(() => {});
   return true;
 }
-
