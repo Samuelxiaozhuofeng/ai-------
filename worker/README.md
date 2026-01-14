@@ -16,6 +16,8 @@ Optional:
 - `WORKER_ID` (default: `worker-<pid>`)
 - `POLL_INTERVAL_MS` (default: `1500`)
 - `MAX_ATTEMPTS` (default: `5`)
+- `WORKER_MODE` (`loop` | `job`, default: `loop`)
+- `MAX_JOBS` (job mode: max jobs per run, default: `1`)
 
 ## Run locally
 
@@ -24,6 +26,12 @@ cd worker
 npm install
 SUPABASE_URL=... SUPABASE_SERVICE_ROLE_KEY=... npm start
 ```
+
+## Cloud Run Jobs
+
+For “run-to-completion” deployments (Cloud Run Jobs), set `WORKER_MODE=job` so the container exits when no work is available.
+
+See `docs/CLOUD_RUN_JOBS.md`.
 
 ## Notes
 - This worker assumes the SQL functions added in `supabase/schema.sql` exist in your Supabase project (`claim_book_processing_job`, `update_book_processing_job`, `update_book_processing_fields`).
