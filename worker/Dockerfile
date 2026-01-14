@@ -3,15 +3,20 @@ FROM node:20-slim
 ENV PIP_DISABLE_PIP_VERSION_CHECK=1 \
     PYTHONUNBUFFERED=1
 
-# Install Python for SudachiPy tokenizer subprocess.
+# Install Python for SudachiPy tokenizer subprocess + toolchain for Rust extensions.
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
+    curl \
     python3 \
     python3-pip \
     python3-dev \
     python3-venv \
     build-essential \
-  && rm -rf /var/lib/apt/lists/*
+  && rm -rf /var/lib/apt/lists/* \
+  && curl https://sh.rustup.rs -sSf | sh -s -- -y --profile minimal
+
+# Ensure the newer Rust toolchain is on PATH for subsequent layers (including pip builds).
+ENV PATH="/root/.cargo/bin:${PATH}"
 
 WORKDIR /app/worker
 

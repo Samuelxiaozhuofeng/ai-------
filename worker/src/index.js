@@ -14,7 +14,14 @@ function createSupabase(config) {
     auth: { persistSession: false, autoRefreshToken: false },
     global: {
       // Ensure PostgREST sees the JWT role as service_role for server-side RPC checks.
-      headers: { Authorization: `Bearer ${config.supabaseServiceRoleKey}` }
+      headers: { Authorization: `Bearer ${config.supabaseServiceRoleKey}` },
+      fetch: (url, options = {}) => {
+        // Increase timeout to 60 seconds for large EPUB downloads
+        return fetch(url, {
+          ...options,
+          signal: AbortSignal.timeout(60000)
+        });
+      }
     }
   });
 }
@@ -188,8 +195,8 @@ async function processJob(ctx, job) {
     await updateBookFields(ctx, userId, bookId, { status: 'ready', progress: 100, stage: 'done', error: null, processedPath: processedManifestPath, didDeleteSource: true });
   } catch (error) {
     const message = error?.message || String(error);
-    await updateJob(ctx, jobId, { status: 'error', progress: job.progress || 0, stage: 'error', error: message, processedPath: processedManifestPath }).catch(() => {});
-    await updateBookFields(ctx, userId, bookId, { status: 'error', progress: job.progress || 0, stage: 'error', error: message, processedPath: processedManifestPath }).catch(() => {});
+    await updateJob(ctx, jobId, { status: 'error', progress: job.progress || 0, stage: 'error', error: message, processedPath: processedManifestPath }).catch(() => { });
+    await updateBookFields(ctx, userId, bookId, { status: 'error', progress: job.progress || 0, stage: 'error', error: message, processedPath: processedManifestPath }).catch(() => { });
     throw error;
   }
 }
