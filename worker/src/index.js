@@ -150,7 +150,15 @@ async function processJob(ctx, job) {
       };
 
       if (language === 'ja') {
+        const chStartTime = Date.now();
+        const chapterSize = Buffer.byteLength(ch.content, 'utf8');
+        console.log(`[worker] tokenizing chapter ${i + 1}/${chapters.length} (${ch.id}, ${Math.round(chapterSize / 1024)}KB)`);
+
         const tokenized = await tokenizeJapaneseCanonicalText(ch.content);
+
+        const chDuration = Math.round((Date.now() - chStartTime) / 1000);
+        console.log(`[worker] chapter ${i + 1}/${chapters.length} done (${tokenized.tokens.length} tokens, ${chDuration}s)`);
+
         const tokensPath = `${userId}/${bookId}/processed/tokens/${ch.id}.json.gz`;
         const tokenPayload = {
           version: '1',
