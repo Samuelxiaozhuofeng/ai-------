@@ -47,6 +47,8 @@ gcloud services enable cloudbuild.googleapis.com
 gcloud builds submit --tag us-central1-docker.pkg.dev/YOUR_PROJECT_ID/intelligent-reader/worker:latest ./worker
 ```
 
+如果 Cloud Build 在安装 Python 包时报 `externally-managed-environment`（PEP 668），请确保 `worker/Dockerfile` 的 pip 安装命令带 `--break-system-packages`（本仓库已加）。
+
 ## 4) 创建 Cloud Run Job
 
 ```bash

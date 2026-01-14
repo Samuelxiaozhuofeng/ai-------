@@ -15,13 +15,9 @@ services:
       context: ./worker
     image: intelligent-reader-worker
     working_dir: /app/worker
-    volumes:
-      - ./worker:/app/worker
     environment:
       - SUPABASE_URL=${SUPABASE_URL}
       - SUPABASE_SERVICE_ROLE_KEY=${SUPABASE_SERVICE_ROLE_KEY}
       - SUPABASE_BUCKET=${SUPABASE_BUCKET:-epubs}
       - POLL_INTERVAL_MS=${POLL_INTERVAL_MS:-1500}
       - MAX_ATTEMPTS=${MAX_ATTEMPTS:-5}
-    command: >
-      sh -c "npm install && npm start"

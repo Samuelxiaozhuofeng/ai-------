@@ -27,6 +27,16 @@ docker compose up
 
 Backend runs on `http://localhost:8000`.
 
+### Worker (Sudachi Japanese tokenization)
+
+The `worker` service is responsible for cloud book processing + Japanese tokenization and requires Supabase credentials.
+
+```bash
+cp .env.example .env
+# edit .env and set SUPABASE_URL + SUPABASE_SERVICE_ROLE_KEY
+docker compose up --build worker
+```
+
 ### Local Python
 
 ```bash

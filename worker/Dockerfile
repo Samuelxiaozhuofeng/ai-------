@@ -15,7 +15,7 @@ WORKDIR /app/worker
 
 # Install Python dependencies (SudachiPy + sudachidict_core).
 COPY requirements.txt ./requirements.txt
-RUN python3 -m pip install --no-cache-dir -r requirements.txt
+RUN python3 -m pip install --no-cache-dir --break-system-packages -r requirements.txt
 
 # Copy package files and install Node dependencies
 COPY package*.json ./
