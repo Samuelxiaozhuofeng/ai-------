@@ -49,6 +49,8 @@ export function createReaderController(elements) {
       scrollIdleTimer: null,
       autoOpenCandidateSelectionId: null
     },
+    suppressPageSwipeUntil: 0,
+    isPhraseSelecting: false,
     suppressWordClickUntil: 0,
     clickedWordsOnPage: new Set(),
     encounterCountByWord: new Map(),
