@@ -133,114 +133,57 @@ export function createReaderController(elements) {
     elements.readingContent.addEventListener('touchend', wordHighlighter.handleReadingSelectionEnd);
 
     // Mobile phrase selection (long-press + drag across words).
-    // Temporarily disabled to isolate page swipe behavior.
-    // elements.readingContent.addEventListener('touchstart', wordHighlighter.handleReadingTouchStart, { passive: true });
-    // elements.readingContent.addEventListener('touchmove', wordHighlighter.handleReadingTouchMove, { passive: true });
-    // elements.readingContent.addEventListener('touchend', wordHighlighter.handleReadingTouchEnd, { passive: true });
-    // elements.readingContent.addEventListener('touchcancel', wordHighlighter.resetPhraseSelection, { passive: true });
+    elements.readingContent.addEventListener('touchstart', wordHighlighter.handleReadingTouchStart, { passive: true });
+    elements.readingContent.addEventListener('touchmove', wordHighlighter.handleReadingTouchMove, { passive: true });
+    elements.readingContent.addEventListener('touchend', wordHighlighter.handleReadingTouchEnd, { passive: true });
+    elements.readingContent.addEventListener('touchcancel', wordHighlighter.resetPhraseSelection, { passive: true });
 
-    // Swipe Gesture Support
-    let swipeTouchId = null;
-    let touchStartX = 0;
-    let touchStartY = 0;
-    let touchStartAt = 0;
-    let touchEndX = 0;
-    let touchEndY = 0;
-    let swipeEligible = false;
+    // Tap/click edge zones to flip pages.
+    const edgeZoneRatio = 0.3;
+    let lastTouchEndAt = 0;
 
-    const swipeThreshold = 90; // pixels (reduce accidental flips)
-    const verticalTolerance = 28; // pixels (scroll/select intent)
-    const fastSwipeMs = 150;
-    const slowSwipeMs = 220;
-    const mobileEdgeZoneRatio = 0.3; // only accept swipes from outer 30% edges on mobile
-
-    function isMobileViewport() {
-      return window.innerWidth <= 768;
-    }
-
-    function isEdgeStart(clientX) {
+    function getEdgeAction(clientX) {
       const w = window.innerWidth || 0;
-      if (!w) return false;
-      const edge = w * mobileEdgeZoneRatio;
-      return clientX <= edge || clientX >= (w - edge);
-    }
-
-    function getTouchById(list, touchId) {
-      if (!list || touchId == null) return null;
-      for (let i = 0; i < list.length; i++) {
-        const touch = list[i];
-        if (touch?.identifier === touchId) return touch;
-      }
+      if (!w) return null;
+      const edge = w * edgeZoneRatio;
+      if (clientX <= edge) return 'prev';
+      if (clientX >= (w - edge)) return 'next';
       return null;
     }
 
-    elements.readingContent.addEventListener('touchstart', (e) => {
-      if (!state.isPageFlipMode) return;
-      if (!e.touches || e.touches.length !== 1) return;
-
-      const touch = e.touches[0];
-      swipeTouchId = touch.identifier;
-      touchStartX = touch.clientX;
-      touchStartY = touch.clientY;
-      touchStartAt = Date.now();
-
-      // On mobile, only edge-start gestures are considered page flips.
-      swipeEligible = !isMobileViewport() || isEdgeStart(touch.clientX);
-      if (!swipeEligible) swipeTouchId = null;
-    }, { passive: true });
-
-    elements.readingContent.addEventListener('touchmove', (e) => {
-      if (!state.isPageFlipMode) return;
-      if (!swipeEligible || swipeTouchId == null) return;
-
-      const touch = getTouchById(e.touches, swipeTouchId);
-      if (!touch) return;
-      touchEndX = touch.clientX;
-      touchEndY = touch.clientY;
-    }, { passive: true });
-
-    elements.readingContent.addEventListener('touchend', (e) => {
-      if (!state.isPageFlipMode) return;
-      if (swipeTouchId == null) return;
-
-      const touch = getTouchById(e.changedTouches, swipeTouchId);
-      const wasEligible = swipeEligible;
-      swipeTouchId = null;
-      swipeEligible = false;
-      if (!touch) return;
-      if (!wasEligible) return;
-
-      // Suppress page flips during/after custom phrase selection or native selection.
-      if (Date.now() < (state.suppressPageSwipeUntil || 0)) return;
-      if (state.isPhraseSelecting) return;
-
-      const durationMs = Date.now() - touchStartAt;
-      if (durationMs > slowSwipeMs) return;
-
-      touchEndX = touch.clientX;
-      touchEndY = touch.clientY;
-      const diffX = touchEndX - touchStartX;
-      const diffY = touchEndY - touchStartY;
-
-      // 1) Vertical intent (scroll/select).
-      if (Math.abs(diffY) > verticalTolerance) return;
-
-      // 2) Active native selection should never page-flip.
+    function shouldBlockPageFlip() {
+      if (!state.isPageFlipMode) return true;
+      if (Date.now() < (state.suppressPageSwipeUntil || 0)) return true;
+      if (state.isPhraseSelecting) return true;
       const selection = window.getSelection?.();
-      const hasTextSelection = Boolean(selection && !selection.isCollapsed && selection.toString().trim());
-      if (hasTextSelection) return;
+      if (selection && !selection.isCollapsed && selection.toString().trim()) return true;
+      return false;
+    }
 
-      // 3) Require a clearly horizontal swipe.
-      const effectiveSwipeThreshold = durationMs <= fastSwipeMs ? swipeThreshold : 120;
-      if (Math.abs(diffX) < effectiveSwipeThreshold) return;
-      if (Math.abs(diffX) < Math.abs(diffY) * 2) return;
-
-      if (diffX > 0) {
+    function handleEdgeFlip(clientX, event) {
+      if (shouldBlockPageFlip()) return;
+      const action = getEdgeAction(clientX);
+      if (!action) return;
+      event?.stopImmediatePropagation?.();
+      event?.preventDefault?.();
+      if (action === 'prev') {
         pagination.goToPreviousPage();
       } else {
         pagination.goToNextPage();
       }
-    }, { passive: true });
+    }
+
+    elements.readingContent.addEventListener('touchend', (event) => {
+      const touch = event.changedTouches && event.changedTouches[0];
+      if (!touch) return;
+      lastTouchEndAt = Date.now();
+      handleEdgeFlip(touch.clientX, event);
+    }, { passive: false, capture: true });
+
+    elements.readingContent.addEventListener('click', (event) => {
+      if (Date.now() - lastTouchEndAt < 500) return;
+      handleEdgeFlip(event.clientX, event);
+    }, { capture: true });
 
     elements.chapterSelectBtn?.addEventListener('click', chapters.openChapterSelectModal);
 
