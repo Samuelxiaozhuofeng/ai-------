@@ -133,10 +133,11 @@ export function createReaderController(elements) {
     elements.readingContent.addEventListener('touchend', wordHighlighter.handleReadingSelectionEnd);
 
     // Mobile phrase selection (long-press + drag across words).
-    elements.readingContent.addEventListener('touchstart', wordHighlighter.handleReadingTouchStart, { passive: true });
-    elements.readingContent.addEventListener('touchmove', wordHighlighter.handleReadingTouchMove, { passive: true });
-    elements.readingContent.addEventListener('touchend', wordHighlighter.handleReadingTouchEnd, { passive: true });
-    elements.readingContent.addEventListener('touchcancel', wordHighlighter.resetPhraseSelection, { passive: true });
+    // Temporarily disabled to isolate page swipe behavior.
+    // elements.readingContent.addEventListener('touchstart', wordHighlighter.handleReadingTouchStart, { passive: true });
+    // elements.readingContent.addEventListener('touchmove', wordHighlighter.handleReadingTouchMove, { passive: true });
+    // elements.readingContent.addEventListener('touchend', wordHighlighter.handleReadingTouchEnd, { passive: true });
+    // elements.readingContent.addEventListener('touchcancel', wordHighlighter.resetPhraseSelection, { passive: true });
 
     // Swipe Gesture Support
     let swipeTouchId = null;
