@@ -82,7 +82,51 @@ async function sudachiTokenize(text) {
 }
 
 /**
+ * Split text into chunks that fit within Sudachi's byte limit (~45KB to be safe).
+ * Tries to split at sentence boundaries (。) when possible.
+ * @param {string} text
+ * @param {number} maxBytes
+ * @returns {Array<{text: string, offset: number}>}
+ */
+function splitTextIntoChunks(text, maxBytes = 45000) {
+  const chunks = [];
+  const encoder = new TextEncoder();
+
+  let currentOffset = 0;
+
+  while (currentOffset < text.length) {
+    let endOffset = text.length;
+    let chunk = text.slice(currentOffset, endOffset);
+
+    // If chunk is too large, find a good split point
+    while (encoder.encode(chunk).length > maxBytes && chunk.length > 0) {
+      // Try to find the last sentence boundary
+      const lastSentence = chunk.lastIndexOf('。');
+      if (lastSentence > 0) {
+        endOffset = currentOffset + lastSentence + 1;
+      } else {
+        // No sentence boundary, just split at maxBytes character estimate
+        const estimatedChars = Math.floor(chunk.length * maxBytes / encoder.encode(chunk).length);
+        endOffset = currentOffset + Math.max(1, estimatedChars);
+      }
+      chunk = text.slice(currentOffset, endOffset);
+    }
+
+    if (chunk.length > 0) {
+      chunks.push({ text: chunk, offset: currentOffset });
+      currentOffset = endOffset;
+    } else {
+      // Safety: if we can't make progress, skip one character
+      currentOffset++;
+    }
+  }
+
+  return chunks;
+}
+
+/**
  * Tokenize canonicalText into offsets-aligned tokens.
+ * Handles long texts by splitting into chunks.
  * @param {string} canonicalText
  */
 export async function tokenizeJapaneseCanonicalText(canonicalText) {
@@ -92,10 +136,35 @@ export async function tokenizeJapaneseCanonicalText(canonicalText) {
   /** @type {Array<{surface: string, lemma: string, reading: string|null, pos: string|null, posDetail: string|null, isWord: boolean, start: number, end: number}>} */
   const out = [];
 
-  /** @type {any[]} */
-  const rawTokens = await sudachiTokenize(safeText);
+  // Check if we need to chunk the text
+  const encoder = new TextEncoder();
+  const textBytes = encoder.encode(safeText).length;
+  const MAX_SUDACHI_BYTES = 45000; // Conservative limit to avoid Sudachi's 49KB limit
 
-  for (const raw of rawTokens) {
+  let allRawTokens = [];
+
+  if (textBytes > MAX_SUDACHI_BYTES) {
+    // Process in chunks
+    const chunks = splitTextIntoChunks(safeText, MAX_SUDACHI_BYTES);
+    console.log(`[tokenizer] Text too large (${textBytes} bytes), splitting into ${chunks.length} chunks`);
+
+    for (const chunk of chunks) {
+      const chunkTokens = await sudachiTokenize(chunk.text);
+      // Adjust offsets to account for chunk position
+      for (const token of chunkTokens) {
+        if (token && typeof token === 'object') {
+          token.start = (token.start || 0) + chunk.offset;
+          token.end = (token.end || 0) + chunk.offset;
+        }
+      }
+      allRawTokens.push(...chunkTokens);
+    }
+  } else {
+    // Process as single text
+    allRawTokens = await sudachiTokenize(safeText);
+  }
+
+  for (const raw of allRawTokens) {
     if (!raw || typeof raw !== 'object') continue;
     const surface = typeof raw.surface === 'string' ? raw.surface : '';
     if (!surface) continue;
