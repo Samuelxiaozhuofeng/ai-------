@@ -55,6 +55,28 @@
   padding: var(--spacing-xl);
 }
 
+.review-card-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: var(--spacing-sm);
+}
+
+.review-delete-btn {
+  opacity: 0.55;
+  transition: opacity 0.2s ease, transform 0.2s ease;
+}
+
+.review-delete-btn:hover:not(:disabled),
+.review-delete-btn:focus-visible {
+  opacity: 1;
+  transform: translateY(-1px);
+}
+
+.review-delete-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
 .review-card.is-answer-hidden .review-body {
   display: none;
 }

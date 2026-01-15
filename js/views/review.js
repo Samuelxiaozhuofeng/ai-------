@@ -2,6 +2,8 @@ import { SUPPORTED_LANGUAGES, getFsrsSettings } from '../storage.js';
 import { getLanguageFilter } from '../core/language-filter.js';
 import { globalVocabByWord, refreshGlobalVocabCache } from '../core/global-vocab-cache.js';
 import { getDueCards, getReviewStats, previewNextIntervals, reviewCard } from '../srs-service.js';
+import { deleteGlobalVocabItem, makeGlobalVocabId } from '../db.js';
+import { ModalManager } from '../ui/modal-manager.js';
 import { showNotification } from '../ui/notifications.js';
 
 let currentReviewLanguage = null; // null for mixed mode
@@ -19,6 +21,13 @@ let navigation = {
  * @param {import('../ui/dom-refs.js').elements} elements
  */
 export function createReviewController(elements) {
+  const deleteVocabModalManager = new ModalManager(elements.deleteVocabModal);
+  deleteVocabModalManager.registerCloseButton(elements.closeDeleteVocabBtn);
+  deleteVocabModalManager.registerCloseButton(elements.cancelDeleteVocabBtn);
+
+  let pendingDeleteId = null;
+  let isDeleting = false;
+
   function setNavigation(handlers) {
     navigation = { ...navigation, ...handlers };
   }
@@ -65,6 +74,76 @@ export function createReviewController(elements) {
   function revealReviewAnswer() {
     if (!currentReviewItem || isReviewAnswerShown) return;
     setReviewAnswerVisibility(true);
+  }
+
+  function getReviewGlobalId(item) {
+    if (!item) return '';
+    if (item.id) return item.id;
+    if (item.normalizedWord) return item.normalizedWord;
+    if (item.language && (item.displayWord || item.lemma)) {
+      return makeGlobalVocabId(item.language, item.displayWord || item.lemma);
+    }
+    return '';
+  }
+
+  function clearPendingDelete() {
+    pendingDeleteId = null;
+  }
+
+  function openDeleteModal() {
+    if (!currentReviewItem) return;
+    const globalId = getReviewGlobalId(currentReviewItem);
+    if (!globalId) return;
+
+    pendingDeleteId = globalId;
+    const displayWord =
+      currentReviewItem?.displayWord
+      || currentReviewItem?.lemma
+      || currentReviewItem?.normalizedWord
+      || currentReviewItem?.id
+      || globalId;
+
+    if (elements.deleteVocabConfirmText) {
+      elements.deleteVocabConfirmText.textContent = `确定要删除「${displayWord}」吗？此操作无法撤销。`;
+    }
+
+    deleteVocabModalManager.open({ focusTarget: elements.confirmDeleteVocabBtn || null });
+  }
+
+  async function handleConfirmDelete() {
+    if (elements.reviewView && elements.reviewView.style.display === 'none') return;
+    if (!pendingDeleteId || isDeleting) return;
+    isDeleting = true;
+    if (elements.reviewDeleteBtn) elements.reviewDeleteBtn.disabled = true;
+
+    try {
+      const removedId = pendingDeleteId;
+      await deleteGlobalVocabItem(removedId);
+      globalVocabByWord.delete(removedId);
+
+      if (reviewQueue[reviewIndex] && getReviewGlobalId(reviewQueue[reviewIndex]) === removedId) {
+        reviewQueue.splice(reviewIndex, 1);
+      } else {
+        const idx = reviewQueue.findIndex((item) => getReviewGlobalId(item) === removedId);
+        if (idx >= 0) {
+          reviewQueue.splice(idx, 1);
+          if (idx < reviewIndex) reviewIndex = Math.max(0, reviewIndex - 1);
+        }
+      }
+
+      currentReviewItem = null;
+      deleteVocabModalManager.close();
+      clearPendingDelete();
+      renderReviewStats(await getReviewStats(new Date(), currentReviewLanguage));
+      showNotification('词汇已删除', 'success');
+      await showNextCard();
+    } catch (error) {
+      console.error('Failed to delete review card:', error);
+      showNotification('删除失败: ' + error.message, 'error');
+    } finally {
+      isDeleting = false;
+      if (elements.reviewDeleteBtn) elements.reviewDeleteBtn.disabled = false;
+    }
   }
 
   async function showNextCard() {
@@ -177,6 +256,13 @@ export function createReviewController(elements) {
     elements.backFromReviewBtn?.addEventListener('click', navigation.backToBookshelf);
     elements.reviewFinishBtn?.addEventListener('click', navigation.backToBookshelf);
     elements.reviewShowAnswerBtn?.addEventListener('click', () => revealReviewAnswer());
+    elements.reviewDeleteBtn?.addEventListener('click', openDeleteModal);
+    elements.confirmDeleteVocabBtn?.addEventListener('click', handleConfirmDelete);
+    elements.closeDeleteVocabBtn?.addEventListener('click', clearPendingDelete);
+    elements.cancelDeleteVocabBtn?.addEventListener('click', clearPendingDelete);
+    elements.deleteVocabModal?.addEventListener('click', (event) => {
+      if (event.target === elements.deleteVocabModal) clearPendingDelete();
+    });
 
     [elements.reviewAgainBtn, elements.reviewGoodBtn]
       .filter(Boolean)

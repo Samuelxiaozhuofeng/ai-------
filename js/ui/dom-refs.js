@@ -162,6 +162,7 @@ export const elements = {
   reviewFinishBtn: document.getElementById('reviewFinishBtn'),
   reviewSession: document.getElementById('reviewSession'),
   reviewCard: document.getElementById('reviewCard'),
+  reviewDeleteBtn: document.getElementById('reviewDeleteBtn'),
   reviewWord: document.getElementById('reviewWord'),
   reviewMeaning: document.getElementById('reviewMeaning'),
   reviewUsage: document.getElementById('reviewUsage'),
