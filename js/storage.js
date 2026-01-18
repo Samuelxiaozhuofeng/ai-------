@@ -347,6 +347,7 @@ export function applyReadingWidth(width) {
   const normalized = normalizeReadingWidth(width);
   const cssValue = READING_WIDTH_PRESETS[normalized] || READING_WIDTH_PRESETS.narrow;
   document.documentElement.style.setProperty('--reader-content-max-width', cssValue);
+  document.documentElement.dataset.readingWidth = normalized;
 }
 
 // Apply persisted reading settings on startup.

@@ -12,7 +12,10 @@
   --bg-tertiary: #ffffff;
   /* Cards */
   --bg-elevated: #ffffff;
-  --page-bg: #ffffff;
+  --page-bg: var(--bg-primary);
+  --page-border: none;
+  --page-shadow: 0 4px 24px rgba(0, 0, 0, 0.04);
+  --page-radius: 4px;
 
   --text-primary: #1d1d1f;
   --text-secondary: #86868b;
@@ -97,7 +100,9 @@
   --bg-secondary: #2c2c2e;
   --bg-tertiary: #3a3a3c;
   --bg-elevated: #48484a;
-  --page-bg: #1f1f22;
+  --page-bg: var(--bg-primary);
+  --page-border: 1px solid rgba(255, 255, 255, 0.08);
+  --page-shadow: none;
 
   --text-primary: #f5f5f7;
   --text-secondary: #98989d;

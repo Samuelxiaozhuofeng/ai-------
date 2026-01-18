@@ -74,6 +74,12 @@
   position: relative;
 }
 
+:root[data-reading-width="full"] {
+  --page-radius: 0;
+  --page-shadow: none;
+  --page-border: none;
+}
+
 .reading-toolbar {
   display: flex;
   justify-content: space-between;
@@ -158,6 +164,12 @@
   border-color: var(--border-subtle);
 }
 
+.reader-view.zen-mode {
+  --page-shadow: none;
+  --page-border: none;
+  --page-radius: 0;
+}
+
 .reader-view.zen-mode .app-header,
 .reader-view.zen-mode .reading-toolbar,
 .reader-view.zen-mode .reader-footer {
@@ -225,9 +237,9 @@
 .reader-view.page-mode .reading-content>div,
 .reading-content.page-measure>div {
   background: var(--page-bg);
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-xl);
-  box-shadow: var(--shadow-lg);
+  border: var(--page-border);
+  border-radius: var(--page-radius);
+  box-shadow: var(--page-shadow);
   padding: var(--spacing-2xl) var(--spacing-2xl) var(--spacing-3xl);
   height: 100%;
   box-sizing: border-box;
