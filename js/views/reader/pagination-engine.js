@@ -691,6 +691,7 @@ export function createPaginationEngine({
     schedulePageProgressSave,
     setLoadChapter,
     goToNextPage,
+    goToPreviousPage,
     getCurrentCharOffset: () => {
       return Array.isArray(state.pageStartCharOffsets)
         ? (state.pageStartCharOffsets[state.currentPageIndex] || 0)

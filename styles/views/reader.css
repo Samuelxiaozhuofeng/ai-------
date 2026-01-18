@@ -923,3 +923,85 @@ input[type="range"] {
 .input-group .input {
   flex: 1;
 }
+
+/* ============================================
+   Zen Mode Floating Sidebar (Desktop)
+   ============================================ */
+@media (min-width: 769px) {
+  .reader-view.zen-mode .vocab-panel {
+    position: fixed;
+    right: 20px;
+    top: 80px;
+    bottom: 20px;
+    width: 380px !important; /* Force width over collapsed state */
+    min-width: 320px;
+    max-width: calc(100vw - 40px);
+    z-index: 90;
+    
+    /* Glassmorphism base */
+    background: rgba(245, 245, 247, 0.88);
+    backdrop-filter: blur(24px);
+    -webkit-backdrop-filter: blur(24px);
+    
+    border: 1px solid var(--border-default);
+    border-radius: var(--radius-lg);
+    box-shadow: 0 12px 48px rgba(0, 0, 0, 0.15);
+    
+    /* Hidden state */
+    transform: translateX(20px);
+    opacity: 0;
+    pointer-events: none;
+    transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+    will-change: transform, opacity;
+    
+    /* Ensure flex layout is preserved even if collapsed class is present */
+    display: flex !important; 
+    border-left: 1px solid var(--border-default) !important;
+  }
+
+  /* When specifically visible in Zen Mode */
+  .reader-view.zen-mode .vocab-panel.zen-sidebar-visible {
+    transform: translateX(0);
+    opacity: 1;
+    pointer-events: auto;
+    
+    /* Override collapsed specifics */
+    width: 380px !important;
+    overflow: visible !important;
+  }
+
+  [data-theme="dark"] .reader-view.zen-mode .vocab-panel {
+    background: rgba(44, 44, 46, 0.9);
+    box-shadow: 0 12px 48px rgba(0, 0, 0, 0.45);
+  }
+
+  /* Make header sticky inside the floating panel */
+  .reader-view.zen-mode .vocab-panel-controls {
+    border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+    background: transparent; 
+  }
+}
+
+@media (min-width: 769px) and (prefers-reduced-motion: reduce) {
+  .reader-view.zen-mode .vocab-panel {
+    transition: none;
+  }
+}
+
+@supports not ((-webkit-backdrop-filter: blur(1px)) or (backdrop-filter: blur(1px))) {
+  @media (min-width: 769px) {
+    .reader-view.zen-mode .vocab-panel {
+      background: rgba(245, 245, 247, 0.96);
+    }
+
+    [data-theme="dark"] .reader-view.zen-mode .vocab-panel {
+      background: rgba(44, 44, 46, 0.96);
+    }
+  }
+}
+
+@media (min-width: 769px) and (max-width: 1024px) {
+  .reader-view.zen-mode .vocab-panel {
+    max-width: calc(100vw - 32px);
+  }
+}

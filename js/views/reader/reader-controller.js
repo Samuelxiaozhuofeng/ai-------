@@ -143,10 +143,19 @@ export function createReaderController(elements) {
   }
 
   function handleReadingWordClick(event) {
-    if (zenModeController.isZenMode() && isWordTargetClick(event)) {
-      zenModeController.exitZenMode({ revealSidebar: true });
+    const isWord = isWordTargetClick(event);
+
+    if (zenModeController.isZenMode()) {
+      if (isWord) {
+        zenModeController.showZenSidebar();
+      } else if (zenModeController.isZenSidebarVisible()) {
+        zenModeController.hideZenSidebar();
+      }
     }
-    wordHighlighter.handleReadingWordClick(event);
+    
+    if (isWord) {
+      wordHighlighter.handleReadingWordClick(event);
+    }
   }
 
   function init({ onBackToBookshelf }) {
@@ -159,6 +168,10 @@ export function createReaderController(elements) {
     elements.readingContent.addEventListener('click', handleReadingWordClick);
     elements.readingContent.addEventListener('mouseup', wordHighlighter.handleReadingSelectionEnd);
     elements.readingContent.addEventListener('touchend', wordHighlighter.handleReadingSelectionEnd);
+
+    elements.vocabPanel?.addEventListener('click', (event) => {
+      event.stopPropagation();
+    });
 
     // Mobile phrase selection (long-press + drag across words).
     elements.readingContent.addEventListener('touchstart', wordHighlighter.handleReadingTouchStart, { passive: true });
@@ -263,6 +276,10 @@ export function createReaderController(elements) {
 
   function handleEscape() {
     if (zenModeController.isZenMode()) {
+      if (zenModeController.isZenSidebarVisible()) {
+        zenModeController.hideZenSidebar();
+        return;
+      }
       zenModeController.exitZenMode();
       return;
     }
