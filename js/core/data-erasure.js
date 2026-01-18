@@ -27,6 +27,7 @@ function recordSuccess(result, step, detail = null) {
 }
 
 function recordFailure(result, step, error) {
+  console.warn(`Data erasure failed for ${step}:`, error);
   result.failed.push({ step, error: error?.message || String(error || '') });
 }
 

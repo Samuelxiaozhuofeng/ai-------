@@ -327,7 +327,10 @@ export function createSettingsModalController(elements) {
   }
 
   function handleEscape() {
-    if (dataEraseModalManager.handleEscape()) return;
+    if (dataEraseModalManager.isOpen()) {
+      closeEraseModal();
+      return;
+    }
     revertPendingReadingSettings();
     settingsModalManager.close();
   }
