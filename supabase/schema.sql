@@ -114,6 +114,7 @@ for delete using (auth.uid() = user_id);
 create or replace function public._require_service_role()
 returns void
 language plpgsql
+set search_path = public, pg_temp
 as $$
 declare
   jwt_role text;
@@ -144,6 +145,7 @@ returns table (
   attempts integer
 )
 language plpgsql
+set search_path = public, pg_temp
 as $$
 begin
   perform public._require_service_role();
@@ -177,6 +179,7 @@ $$;
 create or replace function public.update_book_processing_job(job_id uuid, new_status text, new_progress integer, new_stage text, new_error text, new_processed_path text)
 returns void
 language plpgsql
+set search_path = public, pg_temp
 as $$
 begin
   perform public._require_service_role();
@@ -195,6 +198,7 @@ $$;
 create or replace function public.update_book_processing_fields(target_user_id uuid, target_book_id text, new_status text, new_progress integer, new_stage text, new_error text, new_processed_path text, did_delete_source boolean default false)
 returns void
 language plpgsql
+set search_path = public, pg_temp
 as $$
 begin
   perform public._require_service_role();
@@ -211,6 +215,17 @@ begin
   where user_id = target_user_id and id = target_book_id;
 end;
 $$;
+
+create or replace function public.set_updated_at()
+returns trigger
+language plpgsql
+set search_path = public, pg_temp
+as $function$
+begin
+  new.updated_at = now();
+  return new;
+end;
+$function$;
 
 create table if not exists public.progress (
   user_id uuid not null references auth.users (id) on delete cascade,
@@ -301,7 +316,7 @@ for update using (auth.uid() = user_id) with check (auth.uid() = user_id);
 
 drop policy if exists "books_delete_own" on public.books;
 create policy "books_delete_own" on public.books
-for delete using (auth.uid() = user_id);
+for delete using ((select auth.uid()) = user_id);
 
 drop policy if exists "progress_select_own" on public.progress;
 create policy "progress_select_own" on public.progress

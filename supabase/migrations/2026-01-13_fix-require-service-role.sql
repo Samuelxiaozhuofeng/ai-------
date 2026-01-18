@@ -4,6 +4,7 @@
 create or replace function public._require_service_role()
 returns void
 language plpgsql
+set search_path = public, pg_temp
 as $$
 declare
   jwt_role text;
@@ -23,4 +24,3 @@ begin
   end if;
 end;
 $$;
-

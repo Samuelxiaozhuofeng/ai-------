@@ -67,6 +67,10 @@ Click a word in the reader to open it in the Vocabulary panel, then use:
 - `标记已掌握` → `known`
 - `移除` → back to `new`
 
+## Security Updates
+
+- 2026-01-18: Added explicit `search_path` for Supabase RPC helpers to address mutable search_path warnings.
+
 ## Backend API (Summary)
 
 This is the legacy FastAPI backend (deprecated when using Supabase).
