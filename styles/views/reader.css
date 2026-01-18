@@ -1,6 +1,10 @@
 /* ============================================
    Main Layout
    ============================================ */
+:root {
+  --reader-content-max-width: 720px;
+}
+
 .main-content {
   display: flex;
   flex: 1;
@@ -194,7 +198,7 @@
 /* The actual "page" */
 .reading-content>div,
 .reading-content>article {
-  max-width: 720px;
+  max-width: var(--reader-content-max-width, 720px);
   /* Optimal reading width */
   margin: 0 auto;
   padding-top: var(--spacing-xl);
@@ -208,6 +212,12 @@
 .reading-content p {
   margin-bottom: 1.2em;
   text-align: justify;
+}
+
+@media (max-width: 768px) {
+  :root {
+    --reader-content-max-width: 100% !important;
+  }
 }
 
 /* Welcome State */

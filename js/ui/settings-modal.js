@@ -31,9 +31,9 @@ export function createSettingsModalController(elements) {
   /** @type {{ onAfterSave: (settings: any) => void }} */
   let hooks = { onAfterSave: () => {} };
 
-  /** @type {{ fontPreset: 'serif'|'sans'|'system', fontSize: number, lineHeight: number } | null} */
+  /** @type {{ fontPreset: 'serif'|'sans'|'system', fontSize: number, lineHeight: number, readingWidth: 'narrow'|'wide'|'full' } | null} */
   let readingBaselineSettings = null;
-  /** @type {{ fontPreset: 'serif'|'sans'|'system', fontSize: number, lineHeight: number } | null} */
+  /** @type {{ fontPreset: 'serif'|'sans'|'system', fontSize: number, lineHeight: number, readingWidth: 'narrow'|'wide'|'full' } | null} */
   let readingPendingSettings = null;
   let readingDirty = false;
   let eraseInProgress = false;
@@ -46,12 +46,22 @@ export function createSettingsModalController(elements) {
     const tab = document.getElementById('settingsTabReading');
     const content = document.getElementById('readingSettingsContent');
     const fontPreset = document.getElementById('readingFontPreset');
+    const readingWidth = document.getElementById('readingWidth');
     const fontSize = document.getElementById('readingFontSize');
     const fontSizeValue = document.getElementById('readingFontSizeValue');
     const lineHeight = document.getElementById('readingLineHeight');
     const lineHeightValue = document.getElementById('readingLineHeightValue');
 
-    return { tab, content, fontPreset, fontSize, fontSizeValue, lineHeight, lineHeightValue };
+    return {
+      tab,
+      content,
+      fontPreset,
+      readingWidth,
+      fontSize,
+      fontSizeValue,
+      lineHeight,
+      lineHeightValue
+    };
   }
 
   function normalizeFontSize(value) {
@@ -70,18 +80,24 @@ export function createSettingsModalController(elements) {
     return next;
   }
 
+  function normalizeReadingWidth(value) {
+    return value === 'wide' || value === 'full' ? value : 'narrow';
+  }
+
   function readingFormToSettings() {
     const refs = getReadingDomRefs();
     const fontPresetRaw = refs.fontPreset?.value;
     const fontPreset = fontPresetRaw === 'sans' || fontPresetRaw === 'system' ? fontPresetRaw : 'serif';
+    const readingWidth = normalizeReadingWidth(refs.readingWidth?.value);
     const fontSize = normalizeFontSize(refs.fontSize?.value);
     const lineHeight = normalizeLineHeight(refs.lineHeight?.value);
-    return { fontPreset, fontSize, lineHeight };
+    return { fontPreset, fontSize, lineHeight, readingWidth };
   }
 
   function updateReadingUI(settings) {
     const refs = getReadingDomRefs();
     if (refs.fontPreset) refs.fontPreset.value = settings.fontPreset;
+    if (refs.readingWidth) refs.readingWidth.value = settings.readingWidth;
     if (refs.fontSize) refs.fontSize.value = String(settings.fontSize);
     if (refs.lineHeight) refs.lineHeight.value = String(settings.lineHeight);
 
@@ -366,6 +382,7 @@ export function createSettingsModalController(elements) {
     elements.settingsTabData?.addEventListener('click', () => switchSettingsTab('data'));
 
     readingRefs.fontPreset?.addEventListener('change', handleReadingInput);
+    readingRefs.readingWidth?.addEventListener('change', handleReadingInput);
     readingRefs.fontSize?.addEventListener('input', handleReadingInput);
     readingRefs.lineHeight?.addEventListener('input', handleReadingInput);
 

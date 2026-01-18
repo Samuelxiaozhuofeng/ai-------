@@ -37,8 +37,19 @@ const DEFAULT_LAYOUT = {
 const DEFAULT_READING_SETTINGS = {
   fontPreset: 'serif', // 'serif' | 'sans' | 'system'
   fontSize: 20, // px
-  lineHeight: 1.9
+  lineHeight: 1.9,
+  readingWidth: 'narrow' // 'narrow' | 'wide' | 'full'
 };
+
+const READING_WIDTH_PRESETS = {
+  narrow: '720px',
+  wide: '900px',
+  full: 'min(95%, 1200px)'
+};
+
+function normalizeReadingWidth(value) {
+  return value === 'wide' || value === 'full' ? value : 'narrow';
+}
 
 function normalizeReadingSettings(raw) {
   const fontPreset = raw?.fontPreset === 'sans' || raw?.fontPreset === 'system' ? raw.fontPreset : 'serif';
@@ -53,7 +64,9 @@ function normalizeReadingSettings(raw) {
   lineHeight = Math.max(1.4, Math.min(2.0, lineHeight));
   lineHeight = Math.round(lineHeight * 10) / 10;
 
-  return { fontPreset, fontSize, lineHeight };
+  const readingWidth = normalizeReadingWidth(raw?.readingWidth);
+
+  return { fontPreset, fontSize, lineHeight, readingWidth };
 }
 
 export const FSRS_SETTINGS_KEY = 'language-reader-fsrs-settings';
@@ -318,6 +331,7 @@ export function applyReadingSettings(nextSettings = getReadingSettings()) {
   document.documentElement.style.setProperty('--reader-font-family', stackVar);
   document.documentElement.style.setProperty('--reader-font-size', `${settings.fontSize}px`);
   document.documentElement.style.setProperty('--reader-line-height', String(settings.lineHeight));
+  applyReadingWidth(settings.readingWidth);
 
   if (!bindReadingContentTypography() && typeof window !== 'undefined') {
     window.addEventListener('DOMContentLoaded', () => bindReadingContentTypography(), { once: true });
@@ -326,6 +340,13 @@ export function applyReadingSettings(nextSettings = getReadingSettings()) {
   if (typeof window !== 'undefined') {
     window.dispatchEvent(new CustomEvent('reading-settings-changed', { detail: settings }));
   }
+}
+
+export function applyReadingWidth(width) {
+  if (typeof document === 'undefined') return;
+  const normalized = normalizeReadingWidth(width);
+  const cssValue = READING_WIDTH_PRESETS[normalized] || READING_WIDTH_PRESETS.narrow;
+  document.documentElement.style.setProperty('--reader-content-max-width', cssValue);
 }
 
 // Apply persisted reading settings on startup.
