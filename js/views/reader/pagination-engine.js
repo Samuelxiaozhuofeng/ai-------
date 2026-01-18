@@ -16,6 +16,7 @@ export function createPaginationEngine({
   applyWordStatusesToContainer
 }) {
   let paginationMeasure = null;
+  let paginationMeasureInner = null;
   let pageProgressSaveTimer = null;
   /** @type {((index: number, options?: any) => Promise<void>) | null} */
   let loadChapter = null;
@@ -35,7 +36,14 @@ export function createPaginationEngine({
       paginationMeasure.style.pointerEvents = 'none';
       paginationMeasure.style.visibility = 'hidden';
       paginationMeasure.style.overflow = 'hidden';
+      paginationMeasureInner = document.createElement('div');
+      paginationMeasure.appendChild(paginationMeasureInner);
       document.body.appendChild(paginationMeasure);
+    }
+
+    if (!paginationMeasureInner) {
+      paginationMeasureInner = document.createElement('div');
+      paginationMeasure.appendChild(paginationMeasureInner);
     }
 
     const source = elements.readingContent;
@@ -52,8 +60,8 @@ export function createPaginationEngine({
     paginationMeasure.style.wordSpacing = computed.wordSpacing;
     paginationMeasure.style.fontWeight = computed.fontWeight;
     paginationMeasure.style.fontStyle = computed.fontStyle;
-    paginationMeasure.innerHTML = '';
-    return paginationMeasure;
+    paginationMeasureInner.innerHTML = '';
+    return paginationMeasureInner;
   }
 
   function findPageIndexByCharOffset(pageStartCharOffsets, charOffset) {
@@ -79,9 +87,8 @@ export function createPaginationEngine({
   }
 
   function paginateTokenizedWrapper(wrapper, pageHeightPx) {
-    const measure = ensurePaginationMeasure(pageHeightPx);
-    const pageWrapper = document.createElement('div');
-    measure.appendChild(pageWrapper);
+    const pageWrapper = ensurePaginationMeasure(pageHeightPx);
+    const pageHeight = Math.max(0, pageWrapper.clientHeight || pageHeightPx);
 
     /** @type {string[]} */
     const pages = [];
@@ -100,14 +107,13 @@ export function createPaginationEngine({
       const clone = paragraph.cloneNode(true);
       pageWrapper.appendChild(clone);
 
-      if (measure.scrollHeight > pageHeightPx) {
+      if (pageWrapper.scrollHeight > pageHeight) {
         pageWrapper.removeChild(clone);
         if (paragraph.tagName === 'P') {
           currentPageStartOffset = splitParagraphIntoPages(
             paragraph,
-            measure,
             pageWrapper,
-            pageHeightPx,
+            pageHeight,
             pages,
             pageStartCharOffsets,
             paragraphOffsetCursor,
@@ -122,7 +128,7 @@ export function createPaginationEngine({
           }
 
           pageWrapper.appendChild(clone);
-          if (measure.scrollHeight > pageHeightPx) {
+          if (pageWrapper.scrollHeight > pageHeight) {
             pages.push(pageWrapper.innerHTML);
             pageStartCharOffsets.push(currentPageStartOffset);
             pageWrapper.innerHTML = '';
@@ -148,7 +154,6 @@ export function createPaginationEngine({
 
   function splitParagraphIntoPages(
     paragraph,
-    measure,
     pageWrapper,
     pageHeightPx,
     pages,
@@ -167,7 +172,7 @@ export function createPaginationEngine({
 
       const clone = paragraph.cloneNode(true);
       pageWrapper.appendChild(clone);
-      if (measure.scrollHeight > pageHeightPx) {
+      if (pageWrapper.scrollHeight > pageHeightPx) {
         pages.push(pageWrapper.innerHTML);
         pageStartCharOffsets.push(currentPageStartOffset);
         pageWrapper.innerHTML = '';
@@ -184,7 +189,7 @@ export function createPaginationEngine({
     let start = 0;
 
     while (start < tokens.length) {
-      let end = findMaxFittingTokenEnd(tokens, start, measure, pageWrapper, pageHeightPx);
+      let end = findMaxFittingTokenEnd(tokens, start, pageWrapper, pageHeightPx);
       if (end <= start) {
         if (pageWrapper.childNodes.length > 0) {
           pages.push(pageWrapper.innerHTML);
@@ -215,7 +220,7 @@ export function createPaginationEngine({
     return currentPageStartOffset;
   }
 
-  function findMaxFittingTokenEnd(tokens, start, measure, pageWrapper, pageHeightPx) {
+  function findMaxFittingTokenEnd(tokens, start, pageWrapper, pageHeightPx) {
     let low = start + 1;
     let high = tokens.length;
     let best = start;
@@ -228,7 +233,7 @@ export function createPaginationEngine({
       }
 
       pageWrapper.appendChild(probe);
-      const fits = measure.scrollHeight <= pageHeightPx;
+      const fits = pageWrapper.scrollHeight <= pageHeightPx;
       pageWrapper.removeChild(probe);
 
       if (fits) {
