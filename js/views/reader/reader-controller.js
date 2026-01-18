@@ -132,7 +132,22 @@ export function createReaderController(elements) {
     switchTab: vocabPanel.switchTab
   });
 
-  const zenModeController = createZenModeController(elements);
+  const zenModeController = createZenModeController(elements, {
+    onStateChange: () => {
+      if (!state.isPageFlipMode) return;
+      
+      // Wait for UI transition (300ms) plus a buffer
+      setTimeout(() => {
+        const startCharOffset = pagination.getCurrentCharOffset();
+        const chapterTextHash = pagination.getChapterTextHash();
+        
+        void chapters.loadChapter(state.currentChapterIndex, {
+          startCharOffset,
+          chapterTextHash
+        });
+      }, 350);
+    }
+  });
 
   /** @type {{ onBackToBookshelf: () => void } | null} */
   let navigation = null;

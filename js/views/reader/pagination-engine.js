@@ -575,7 +575,10 @@ export function createPaginationEngine({
     if (state.isPageFlipMode) {
       if (language === 'ja') {
         const requestId = ++renderRequestId;
-        const pageHeight = elements.readingContent.clientHeight || 520;
+          let pageHeight = elements.readingContent.clientHeight || 520;
+        if (elements.readerView?.classList.contains('zen-mode')) {
+          pageHeight = Math.floor(pageHeight * 0.9);
+        }
         elements.readingContent.innerHTML = '<p class="loading">Loading Japanese tokens...</p>';
 
         const bookId = state.currentBookId || null;
@@ -620,7 +623,10 @@ export function createPaginationEngine({
         return;
       }
 
-      const pageHeight = elements.readingContent.clientHeight || 520;
+        let pageHeight = elements.readingContent.clientHeight || 520;
+        if (elements.readerView?.classList.contains('zen-mode')) {
+          pageHeight = Math.floor(pageHeight * 0.9);
+        }
       const { wrapper, canonicalText } = buildTokenizedChapterWrapperWithMeta(chapterContent);
       const { pages, pageStartCharOffsets } = paginateTokenizedWrapper(wrapper, pageHeight);
       state.chapterPages = pages;

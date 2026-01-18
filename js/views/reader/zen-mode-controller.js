@@ -1,4 +1,4 @@
-export function createZenModeController(elements) {
+export function createZenModeController(elements, callbacks = {}) {
   const EDGE_THRESHOLD_PX = 50;
   const UI_HIDE_DELAY_MS = 3000;
   const CARD_WIDTH_PX = 340;
@@ -165,6 +165,10 @@ export function createZenModeController(elements) {
 
     clearHideTimer();
     setButtonState(true);
+
+    if (typeof callbacks.onStateChange === 'function') {
+      callbacks.onStateChange(true);
+    }
   }
 
   function exitZenMode({ revealSidebar = false } = {}) {
@@ -186,6 +190,10 @@ export function createZenModeController(elements) {
     }
 
     setButtonState(false);
+
+    if (typeof callbacks.onStateChange === 'function') {
+      callbacks.onStateChange(false);
+    }
   }
 
   function toggleZenMode() {
