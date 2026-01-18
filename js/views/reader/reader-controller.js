@@ -201,6 +201,26 @@ export function createReaderController(elements) {
     elements.nextPageBtn?.addEventListener('click', () => pagination.goToNextPage());
 
     setupResizeHandle();
+
+    // Re-paginate when reading settings (font size/line height) change
+    let debounceTimer = null;
+    window.addEventListener('reading-settings-changed', () => {
+      if (!state.currentBookId || !state.currentBook) return;
+      if (!state.isPageFlipMode) return;
+      if (elements.readerView.style.display === 'none') return;
+
+      if (debounceTimer) clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(() => {
+        // We preserve position by character offset
+        const startCharOffset = pagination.getCurrentCharOffset();
+        const chapterTextHash = pagination.getChapterTextHash();
+
+        void chapters.loadChapter(state.currentChapterIndex, {
+          startCharOffset,
+          chapterTextHash
+        });
+      }, 300);
+    });
   }
 
   function getCurrentBookId() {

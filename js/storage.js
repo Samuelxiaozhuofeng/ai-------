@@ -265,6 +265,10 @@ export function applyReadingSettings(nextSettings = getReadingSettings()) {
   if (!bindReadingContentTypography() && typeof window !== 'undefined') {
     window.addEventListener('DOMContentLoaded', () => bindReadingContentTypography(), { once: true });
   }
+
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('reading-settings-changed', { detail: settings }));
+  }
 }
 
 // Apply persisted reading settings on startup.

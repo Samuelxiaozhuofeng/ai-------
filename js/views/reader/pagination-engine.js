@@ -555,7 +555,12 @@ export function createPaginationEngine({
     updatePageControls,
     schedulePageProgressSave,
     setLoadChapter,
-    goToPreviousPage,
-    goToNextPage
+    goToNextPage,
+    getCurrentCharOffset: () => {
+      return Array.isArray(state.pageStartCharOffsets)
+        ? (state.pageStartCharOffsets[state.currentPageIndex] || 0)
+        : 0;
+    },
+    getChapterTextHash: () => state.chapterTextHash
   };
 }
