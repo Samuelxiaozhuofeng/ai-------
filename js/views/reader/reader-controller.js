@@ -137,17 +137,19 @@ export function createReaderController(elements) {
   /** @type {{ onBackToBookshelf: () => void } | null} */
   let navigation = null;
 
-  function isWordTargetClick(event) {
+  function getWordTarget(event) {
     const target = event?.target?.closest?.('.word');
-    return Boolean(target && elements.readingContent.contains(target));
+    if (!target || !elements.readingContent.contains(target)) return null;
+    return target;
   }
 
   function handleReadingWordClick(event) {
-    const isWord = isWordTargetClick(event);
+    const wordEl = getWordTarget(event);
+    const isWord = Boolean(wordEl);
 
     if (zenModeController.isZenMode()) {
       if (isWord) {
-        zenModeController.showZenSidebar();
+        zenModeController.showZenSidebar(wordEl);
       } else if (zenModeController.isZenSidebarVisible()) {
         zenModeController.hideZenSidebar();
       }

@@ -844,7 +844,11 @@ export function createVocabPanel({
                 <span class="vocab-card-word">${escapeHtml(word)}</span>
             </div>
             <div class="vocab-card-body">
-                <p class="loading">Analyzing...</p>
+                <div class="skeleton-loader" aria-hidden="true">
+                    <div class="skeleton-line" style="width: 80%;"></div>
+                    <div class="skeleton-line" style="width: 60%;"></div>
+                    <div class="skeleton-line" style="width: 70%;"></div>
+                </div>
             </div>
         `;
       return card;

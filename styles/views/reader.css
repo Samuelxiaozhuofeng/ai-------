@@ -534,6 +534,43 @@
   box-shadow: var(--shadow-md);
 }
 
+.skeleton-loader {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.skeleton-line {
+  height: 10px;
+  border-radius: 999px;
+  background: linear-gradient(
+    90deg,
+    rgba(0, 0, 0, 0.08) 0%,
+    rgba(0, 0, 0, 0.16) 50%,
+    rgba(0, 0, 0, 0.08) 100%
+  );
+  background-size: 200% 100%;
+  animation: skeleton-shimmer 1.2s ease-in-out infinite;
+}
+
+[data-theme="dark"] .skeleton-line {
+  background: linear-gradient(
+    90deg,
+    rgba(255, 255, 255, 0.08) 0%,
+    rgba(255, 255, 255, 0.18) 50%,
+    rgba(255, 255, 255, 0.08) 100%
+  );
+}
+
+@keyframes skeleton-shimmer {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}
+
 .vocab-card-header {
   display: flex;
   justify-content: space-between;
@@ -925,27 +962,24 @@ input[type="range"] {
 }
 
 /* ============================================
-   Zen Mode Floating Sidebar (Desktop)
+   Zen Mode Margin Note (Desktop)
    ============================================ */
 @media (min-width: 769px) {
   .reader-view.zen-mode .vocab-panel {
     position: fixed;
-    right: 20px;
-    top: 80px;
-    bottom: 20px;
-    width: 380px !important; /* Force width over collapsed state */
-    min-width: 320px;
-    max-width: calc(100vw - 40px);
+    left: var(--vocab-note-left, calc(50% + 380px));
+    top: var(--vocab-note-top, 100px);
+    width: 340px !important;
+    max-width: 360px;
+    height: auto;
+    max-height: 80vh;
     z-index: 90;
-    
-    /* Glassmorphism base */
-    background: rgba(245, 245, 247, 0.88);
-    backdrop-filter: blur(24px);
-    -webkit-backdrop-filter: blur(24px);
-    
-    border: 1px solid var(--border-default);
+
+    --vocab-note-bg: rgba(255, 255, 255, 0.95);
+    background: var(--vocab-note-bg);
+    border: none;
     border-radius: var(--radius-lg);
-    box-shadow: 0 12px 48px rgba(0, 0, 0, 0.15);
+    box-shadow: 0 4px 24px rgba(0, 0, 0, 0.08);
     
     /* Hidden state */
     transform: translateX(20px);
@@ -956,7 +990,7 @@ input[type="range"] {
     
     /* Ensure flex layout is preserved even if collapsed class is present */
     display: flex !important; 
-    border-left: 1px solid var(--border-default) !important;
+    border-left: none !important;
   }
 
   /* When specifically visible in Zen Mode */
@@ -966,13 +1000,31 @@ input[type="range"] {
     pointer-events: auto;
     
     /* Override collapsed specifics */
-    width: 380px !important;
+    width: 340px !important;
     overflow: visible !important;
   }
 
+  .reader-view.zen-mode .vocab-panel.zen-sidebar-visible::before {
+    content: '';
+    position: absolute;
+    left: -8px;
+    top: var(--vocab-note-pointer-offset, 20px);
+    width: 0;
+    height: 0;
+    border-top: 8px solid transparent;
+    border-bottom: 8px solid transparent;
+    border-right: 8px solid var(--vocab-note-bg);
+    filter: drop-shadow(-2px 0 4px rgba(0, 0, 0, 0.08));
+  }
+
   [data-theme="dark"] .reader-view.zen-mode .vocab-panel {
-    background: rgba(44, 44, 46, 0.9);
-    box-shadow: 0 12px 48px rgba(0, 0, 0, 0.45);
+    --vocab-note-bg: #2c2c2e;
+    background: var(--vocab-note-bg);
+    box-shadow: 0 4px 24px rgba(0, 0, 0, 0.3);
+  }
+
+  [data-theme="dark"] .reader-view.zen-mode .vocab-panel.zen-sidebar-visible::before {
+    filter: drop-shadow(-2px 0 4px rgba(0, 0, 0, 0.3));
   }
 
   /* Make header sticky inside the floating panel */
@@ -980,23 +1032,27 @@ input[type="range"] {
     border-radius: var(--radius-lg) var(--radius-lg) 0 0;
     background: transparent; 
   }
+
+  .reader-view.zen-mode .vocab-panel .tab-content {
+    min-height: 0;
+  }
+
+  .reader-view.zen-mode.zen-note-fallback .vocab-panel {
+    left: auto;
+    right: 20px;
+    top: 80px;
+    bottom: 20px;
+    max-height: none;
+  }
+
+  .reader-view.zen-mode.zen-note-fallback .vocab-panel.zen-sidebar-visible::before {
+    display: none;
+  }
 }
 
 @media (min-width: 769px) and (prefers-reduced-motion: reduce) {
   .reader-view.zen-mode .vocab-panel {
     transition: none;
-  }
-}
-
-@supports not ((-webkit-backdrop-filter: blur(1px)) or (backdrop-filter: blur(1px))) {
-  @media (min-width: 769px) {
-    .reader-view.zen-mode .vocab-panel {
-      background: rgba(245, 245, 247, 0.96);
-    }
-
-    [data-theme="dark"] .reader-view.zen-mode .vocab-panel {
-      background: rgba(44, 44, 46, 0.96);
-    }
   }
 }
 
