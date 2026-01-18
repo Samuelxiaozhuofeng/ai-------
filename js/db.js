@@ -793,6 +793,43 @@ async function syncGlobalKnownRemote() {
 }
 
 /**
+ * Clear all local IndexedDB stores (books, vocabulary, progress, cache).
+ * @returns {Promise<boolean>}
+ */
+export async function clearAllLocalStores() {
+    return new Promise((resolve, reject) => {
+        if (!db) {
+            reject(new Error('Database not initialized'));
+            return;
+        }
+
+        const storeNames = [
+            STORE_BOOKS,
+            STORE_VOCABULARY,
+            STORE_PROGRESS,
+            STORE_GLOBAL_VOCAB,
+            STORE_EPUB_FILES,
+            STORE_TOKENIZATION_CACHE
+        ];
+
+        const availableStores = storeNames.filter((name) => db.objectStoreNames.contains(name));
+        if (availableStores.length === 0) {
+            resolve(true);
+            return;
+        }
+
+        const transaction = db.transaction(availableStores, 'readwrite');
+        transaction.oncomplete = () => resolve(true);
+        transaction.onerror = () => reject(transaction.error || new Error('Failed to clear local stores'));
+        transaction.onabort = () => reject(transaction.error || new Error('Failed to clear local stores'));
+
+        availableStores.forEach((storeName) => {
+            transaction.objectStore(storeName).clear();
+        });
+    });
+}
+
+/**
  * Get a global-known entry by word + language.
  * @param {string} word
  * @param {string} language

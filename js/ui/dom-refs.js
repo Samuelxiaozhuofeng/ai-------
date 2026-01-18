@@ -137,8 +137,19 @@ export const elements = {
   // Settings Tabs
   settingsTabAI: document.getElementById('settingsTabAI'),
   settingsTabFSRS: document.getElementById('settingsTabFSRS'),
+  settingsTabData: document.getElementById('settingsTabData'),
   aiSettingsContent: document.getElementById('aiSettingsContent'),
   fsrsSettingsContent: document.getElementById('fsrsSettingsContent'),
+  dataManagementContent: document.getElementById('dataManagementContent'),
+
+  // Data Erasure Modal
+  eraseAllDataBtn: document.getElementById('eraseAllDataBtn'),
+  dataEraseModal: document.getElementById('dataEraseModal'),
+  closeDataEraseBtn: document.getElementById('closeDataEraseBtn'),
+  cancelDataEraseBtn: document.getElementById('cancelDataEraseBtn'),
+  confirmDataEraseBtn: document.getElementById('confirmDataEraseBtn'),
+  dataEraseInput: document.getElementById('dataEraseInput'),
+  dataEraseStatus: document.getElementById('dataEraseStatus'),
 
   // Auto Study Toggle
   autoStudyToggle: document.getElementById('autoStudyToggle'),

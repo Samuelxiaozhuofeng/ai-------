@@ -505,6 +505,9 @@
           <button class="settings-tab" data-settings-tab="fsrs" id="settingsTabFSRS">
             🧠 FSRS
           </button>
+          <button class="settings-tab" data-settings-tab="data" id="settingsTabData">
+            🗑️ 数据管理
+          </button>
         </div>
         <div class="modal-body">
           <!-- AI Settings Tab Content -->
@@ -611,12 +614,48 @@
               <small style="color: var(--text-secondary); font-size: 12px;">范围 0.70–0.97，值越高，复习越频繁。</small>
             </div>
           </div>
+
+          <!-- Data Management Tab Content -->
+          <div class="settings-tab-content" id="dataManagementContent">
+            <p class="data-management-warning">
+              ⚠️ 此操作不可撤销！将永久删除所有书籍、词汇数据、阅读进度和设置。
+            </p>
+            <div class="data-management-card">
+              <h3>抹除所有数据</h3>
+              <p class="data-management-text">
+                删除范围：书籍、词汇（学习/已掌握）、阅读进度、云端文件、以及本地设置。
+              </p>
+              <button class="btn btn-danger" id="eraseAllDataBtn">抹除所有数据</button>
+            </div>
+          </div>
         </div>
         <div class="modal-footer">
           <button class="btn btn-ghost" id="cancelSettingsBtn">取消</button>
           <button class="btn btn-primary" id="saveSettingsBtn">
             保存设置
           </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Data Erasure Confirmation Modal -->
+    <div class="modal-overlay" id="dataEraseModal">
+      <div class="modal modal-small">
+        <div class="modal-header">
+          <h2>🗑️ 抹除所有数据</h2>
+          <button class="btn btn-ghost btn-small" id="closeDataEraseBtn">✕</button>
+        </div>
+        <div class="modal-body">
+          <p class="data-management-warning">
+            ⚠️ 此操作不可撤销！将永久删除所有书籍、词汇数据、阅读进度和设置。
+          </p>
+          <p class="data-management-text">请输入 <strong>DELETE</strong> 确认继续。</p>
+          <input type="text" id="dataEraseInput" placeholder="请输入 DELETE 确认" class="input" />
+          <p class="data-management-status" id="dataEraseStatus"></p>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-ghost" id="cancelDataEraseBtn">取消</button>
+          <button class="btn btn-danger" id="confirmDataEraseBtn" disabled>确认删除</button>
         </div>
       </div>
     </div>

@@ -269,6 +269,30 @@ export function saveReadingSettings(settings) {
   }
 }
 
+export function resetLocalPreferences({ preserveTheme = true, preserveLanguageFilter = true } = {}) {
+  const keysToRemove = [
+    STORAGE_KEYS.SETTINGS,
+    STORAGE_KEYS.LAYOUT,
+    STORAGE_KEYS.READING_SETTINGS,
+    STORAGE_KEYS.AUTO_STUDY,
+    STORAGE_KEYS.GLOBAL_KNOWN,
+    FSRS_SETTINGS_KEY,
+    'language-reader-vocab-library-view-state',
+    'language-reader-anki-settings'
+  ];
+
+  if (!preserveTheme) keysToRemove.push(STORAGE_KEYS.THEME);
+  if (!preserveLanguageFilter) keysToRemove.push('language-reader-language-filter');
+
+  keysToRemove.forEach((key) => {
+    try {
+      localStorage.removeItem(key);
+    } catch {
+      // ignore
+    }
+  });
+}
+
 function bindReadingContentTypography() {
   const readingContent = document.getElementById('readingContent');
   if (!readingContent) return false;

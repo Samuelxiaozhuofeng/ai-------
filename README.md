@@ -59,6 +59,10 @@ uvicorn main:app --reload --port 8000
 - `known`: marked as mastered; shown as normal text
 - Known words are shared across books of the same language.
 
+## Data Management
+
+Use Settings → 数据管理 to erase all books, vocabulary, progress, and local settings while keeping your account.
+
 Click a word in the reader to open it in the Vocabulary panel, then use:
 - `加入学习` → `learning`
 - `标记已掌握` → `known`

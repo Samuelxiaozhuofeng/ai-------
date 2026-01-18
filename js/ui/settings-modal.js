@@ -12,6 +12,7 @@ import { fetchModels } from '../ai-service.js';
 import { ModalManager } from './modal-manager.js';
 import { getAutoStudyEnabled, setAutoStudyEnabled } from '../core/auto-study.js';
 import { showNotification } from './notifications.js';
+import { eraseAllUserData } from '../core/data-erasure.js';
 
 /**
  * @param {import('./dom-refs.js').elements} elements
@@ -20,6 +21,12 @@ export function createSettingsModalController(elements) {
   const settingsModalManager = new ModalManager(elements.settingsModal);
   settingsModalManager.registerCloseButton(elements.closeSettingsBtn);
   settingsModalManager.registerCloseButton(elements.cancelSettingsBtn);
+  const dataEraseModalManager = new ModalManager(elements.dataEraseModal, {
+    closeOnOverlayClick: false,
+    focusTarget: elements.dataEraseInput || null
+  });
+  dataEraseModalManager.registerCloseButton(elements.closeDataEraseBtn);
+  dataEraseModalManager.registerCloseButton(elements.cancelDataEraseBtn);
 
   /** @type {{ onAfterSave: (settings: any) => void }} */
   let hooks = { onAfterSave: () => {} };
@@ -29,6 +36,7 @@ export function createSettingsModalController(elements) {
   /** @type {{ fontPreset: 'serif'|'sans'|'system', fontSize: number, lineHeight: number } | null} */
   let readingPendingSettings = null;
   let readingDirty = false;
+  let eraseInProgress = false;
 
   function setHooks(nextHooks) {
     hooks = { ...hooks, ...nextHooks };
@@ -149,6 +157,78 @@ export function createSettingsModalController(elements) {
     loadReadingSettingsToForm();
   }
 
+  function resetEraseModal() {
+    if (elements.dataEraseInput) elements.dataEraseInput.value = '';
+    if (elements.dataEraseStatus) elements.dataEraseStatus.textContent = '';
+    if (elements.confirmDataEraseBtn) elements.confirmDataEraseBtn.disabled = true;
+    eraseInProgress = false;
+  }
+
+  function updateEraseUiState({ isBusy, statusText }) {
+    if (elements.confirmDataEraseBtn) {
+      elements.confirmDataEraseBtn.disabled = isBusy || elements.dataEraseInput?.value !== 'DELETE';
+      elements.confirmDataEraseBtn.textContent = isBusy ? '正在删除数据...' : '确认删除';
+    }
+    if (elements.cancelDataEraseBtn) elements.cancelDataEraseBtn.disabled = isBusy;
+    if (elements.closeDataEraseBtn) elements.closeDataEraseBtn.disabled = isBusy;
+    if (elements.dataEraseInput) elements.dataEraseInput.disabled = isBusy;
+    if (elements.dataEraseStatus && typeof statusText === 'string') {
+      elements.dataEraseStatus.textContent = statusText;
+    }
+  }
+
+  function openEraseModal() {
+    resetEraseModal();
+    dataEraseModalManager.open({ focusTarget: elements.dataEraseInput || null });
+  }
+
+  function closeEraseModal() {
+    if (eraseInProgress) return;
+    resetEraseModal();
+    dataEraseModalManager.close();
+  }
+
+  function handleEraseInput() {
+    if (!elements.confirmDataEraseBtn) return;
+    const matches = elements.dataEraseInput?.value === 'DELETE';
+    elements.confirmDataEraseBtn.disabled = !matches;
+  }
+
+  async function handleEraseConfirm() {
+    if (eraseInProgress) return;
+    if (elements.dataEraseInput?.value !== 'DELETE') return;
+    eraseInProgress = true;
+    updateEraseUiState({ isBusy: true, statusText: '正在删除数据...' });
+
+    let result = null;
+    try {
+      result = await eraseAllUserData();
+    } catch (error) {
+      updateEraseUiState({ isBusy: false, statusText: `删除失败：${error.message || error}` });
+      showNotification(`删除失败：${error.message || error}`, 'error');
+      eraseInProgress = false;
+      return;
+    }
+
+    const successCount = result?.success?.length || 0;
+    const failedCount = result?.failed?.length || 0;
+    const totalCount = successCount + failedCount;
+    const storageSummary = result?.storage?.total
+      ? ` 存储文件 ${result.storage.deleted}/${result.storage.total}`
+      : '';
+    const summaryText = `已完成删除（${successCount}/${totalCount}）${storageSummary}`;
+
+    updateEraseUiState({ isBusy: false, statusText: summaryText });
+    showNotification(`所有数据已清空。${summaryText}`, failedCount ? 'warning' : 'success');
+
+    dataEraseModalManager.close();
+    settingsModalManager.close();
+
+    setTimeout(() => {
+      window.location.reload();
+    }, 400);
+  }
+
   function open() {
     loadSettingsToForm();
     settingsModalManager.open();
@@ -193,10 +273,12 @@ export function createSettingsModalController(elements) {
     elements.settingsTabAI.classList.toggle('active', tabName === 'ai');
     readingRefs.tab?.classList.toggle('active', tabName === 'reading');
     elements.settingsTabFSRS?.classList.toggle('active', tabName === 'fsrs');
+    elements.settingsTabData?.classList.toggle('active', tabName === 'data');
 
     elements.aiSettingsContent.classList.toggle('active', tabName === 'ai');
     readingRefs.content?.classList.toggle('active', tabName === 'reading');
     elements.fsrsSettingsContent?.classList.toggle('active', tabName === 'fsrs');
+    elements.dataManagementContent?.classList.toggle('active', tabName === 'data');
   }
 
   function handleAutoStudyToggle(e) {
@@ -245,6 +327,7 @@ export function createSettingsModalController(elements) {
   }
 
   function handleEscape() {
+    if (dataEraseModalManager.handleEscape()) return;
     revertPendingReadingSettings();
     settingsModalManager.close();
   }
@@ -277,6 +360,7 @@ export function createSettingsModalController(elements) {
     const readingRefs = getReadingDomRefs();
     readingRefs.tab?.addEventListener('click', () => switchSettingsTab('reading'));
     elements.settingsTabFSRS?.addEventListener('click', () => switchSettingsTab('fsrs'));
+    elements.settingsTabData?.addEventListener('click', () => switchSettingsTab('data'));
 
     readingRefs.fontPreset?.addEventListener('change', handleReadingInput);
     readingRefs.fontSize?.addEventListener('input', handleReadingInput);
@@ -302,6 +386,11 @@ export function createSettingsModalController(elements) {
         elements.fsrsRequestRetentionValue.textContent = Number.isFinite(value) ? value.toFixed(2) : '0.90';
       }
     });
+
+    elements.eraseAllDataBtn?.addEventListener('click', openEraseModal);
+    elements.dataEraseInput?.addEventListener('input', handleEraseInput);
+    elements.confirmDataEraseBtn?.addEventListener('click', handleEraseConfirm);
+    elements.cancelDataEraseBtn?.addEventListener('click', closeEraseModal);
   }
 
   return {
