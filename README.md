@@ -58,6 +58,7 @@ uvicorn main:app --reload --port 8000
 - `learning`: saved for study; shown with yellow highlight
 - `known`: marked as mastered; shown as normal text
 - Known words are shared across books of the same language.
+- Bookshelf header shows Known Words stats with a detail modal (search, language filter, pagination).
 
 ## Data Management
 

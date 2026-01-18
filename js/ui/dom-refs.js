@@ -29,6 +29,10 @@ export const elements = {
   mobileMenuBtn: document.getElementById('mobileMenuBtn'),
   mobileHeaderMenu: document.getElementById('mobileHeaderMenu'),
   mobileAuthMenuItem: document.getElementById('mobileAuthMenuItem'),
+  knownWordsCard: document.getElementById('knownWordsCard'),
+  knownWordsTotal: document.getElementById('knownWordsTotal'),
+  knownWordsToday: document.getElementById('knownWordsToday'),
+  knownWordsLanguageLabel: document.getElementById('knownWordsLanguageLabel'),
 
   // Context Menu
   bookContextMenu: document.getElementById('bookContextMenu'),
@@ -229,6 +233,23 @@ export const elements = {
   confirmBulkDeleteVocabBtn: document.getElementById('confirmBulkDeleteVocabBtn'),
   bulkDeleteVocabConfirmText: document.getElementById('bulkDeleteVocabConfirmText'),
   bulkDeleteVocabPreviewList: document.getElementById('bulkDeleteVocabPreviewList'),
+
+  // Known Words Modal
+  knownWordsModal: document.getElementById('knownWordsModal'),
+  closeKnownWordsBtn: document.getElementById('closeKnownWordsBtn'),
+  knownWordsTabs: document.getElementById('knownWordsTabs'),
+  knownWordsTabAll: document.getElementById('knownWordsTabAll'),
+  knownWordsTabToday: document.getElementById('knownWordsTabToday'),
+  knownWordsSearchInput: document.getElementById('knownWordsSearchInput'),
+  knownWordsLanguageFilter: document.getElementById('knownWordsLanguageFilter'),
+  knownWordsResultCount: document.getElementById('knownWordsResultCount'),
+  knownWordsPageInfo: document.getElementById('knownWordsPageInfo'),
+  knownWordsList: document.getElementById('knownWordsList'),
+  knownWordsEmpty: document.getElementById('knownWordsEmpty'),
+  knownWordsLoading: document.getElementById('knownWordsLoading'),
+  knownWordsPrevPage: document.getElementById('knownWordsPrevPage'),
+  knownWordsNextPage: document.getElementById('knownWordsNextPage'),
+  knownWordsPageSummary: document.getElementById('knownWordsPageSummary'),
 
   // Import: Language Select Modal
   languageSelectModal: document.getElementById('languageSelectModal'),

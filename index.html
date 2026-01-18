@@ -35,6 +35,25 @@
               <span class="icon">☰</span>
             </button>
           </div>
+          <button class="known-words-card" id="knownWordsCard" title="已掌握词汇" type="button">
+            <div class="known-words-card-header">
+              <span class="icon">📚</span>
+              <div class="known-words-card-title">
+                <span class="known-words-card-label">已掌握词汇</span>
+                <span class="known-words-card-language" id="knownWordsLanguageLabel">—</span>
+              </div>
+            </div>
+            <div class="known-words-card-stats">
+              <div class="known-words-card-stat">
+                <span class="stat-label">总数</span>
+                <span class="stat-value" id="knownWordsTotal">—</span>
+              </div>
+              <div class="known-words-card-stat">
+                <span class="stat-label">今日</span>
+                <span class="stat-value stat-today" id="knownWordsToday">—</span>
+              </div>
+            </div>
+          </button>
           <button class="btn btn-secondary" id="vocabLibraryBtn" title="词汇库">
             <span class="icon">📝</span> 词汇库
           </button>
@@ -481,6 +500,54 @@
         <div class="modal-footer">
           <button class="btn btn-ghost" id="cancelBulkDeleteVocabBtn">取消</button>
           <button class="btn btn-danger" id="confirmBulkDeleteVocabBtn">删除</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Known Words Modal -->
+    <div class="modal-overlay" id="knownWordsModal">
+      <div class="modal known-words-modal">
+        <div class="modal-header">
+          <h2>📚 已掌握词汇</h2>
+          <button class="btn btn-ghost btn-small" id="closeKnownWordsBtn">✕</button>
+        </div>
+        <div class="known-words-tabs" id="knownWordsTabs">
+          <button class="known-words-tab active" data-known-tab="all" id="knownWordsTabAll">All Known Words</button>
+          <button class="known-words-tab" data-known-tab="today" id="knownWordsTabToday">Today's Words</button>
+        </div>
+        <div class="modal-body known-words-body">
+          <div class="known-words-controls">
+            <label class="known-words-search">
+              <span class="icon">🔍</span>
+              <input type="text" class="input" id="knownWordsSearchInput" placeholder="搜索已掌握词汇..." />
+            </label>
+            <select class="input" id="knownWordsLanguageFilter">
+              <option value="">全部语言</option>
+              <option value="en">英语</option>
+              <option value="es">西班牙语</option>
+              <option value="ja">日语</option>
+            </select>
+          </div>
+          <div class="known-words-meta">
+            <span id="knownWordsResultCount">结果: —</span>
+            <span class="known-words-dot">·</span>
+            <span id="knownWordsPageInfo">第 — 页</span>
+          </div>
+          <div class="known-words-loading" id="knownWordsLoading" style="display: none;">
+            <span class="loading-spinner" aria-hidden="true"></span>
+            <span>正在加载词汇...</span>
+          </div>
+          <div class="known-words-grid" id="knownWordsList"></div>
+          <div class="known-words-empty" id="knownWordsEmpty" style="display: none;">
+            <div class="empty-icon">✨</div>
+            <h3>暂时没有已掌握词汇</h3>
+            <p>继续阅读并标记单词为已掌握，它们会在这里出现。</p>
+          </div>
+        </div>
+        <div class="modal-footer known-words-footer">
+          <button class="btn btn-ghost" id="knownWordsPrevPage">← 上一页</button>
+          <span class="known-words-page-summary" id="knownWordsPageSummary">第 1 / 1 页</span>
+          <button class="btn btn-ghost" id="knownWordsNextPage">下一页 →</button>
         </div>
       </div>
     </div>

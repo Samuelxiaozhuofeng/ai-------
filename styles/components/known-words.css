@@ -1,0 +1,322 @@
+/* ============================================
+   Known Words UI
+   ============================================ */
+
+.known-words-card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 12px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-default);
+  background: linear-gradient(135deg, var(--bg-tertiary), var(--bg-secondary));
+  box-shadow: var(--shadow-sm);
+  cursor: pointer;
+  min-width: 170px;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  appearance: none;
+  transition: transform var(--transition-fast), box-shadow var(--transition-fast), border-color var(--transition-fast);
+}
+
+.known-words-card:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-md);
+  border-color: var(--border-hover);
+}
+
+.known-words-card:focus-visible {
+  outline: 2px solid rgba(0, 122, 255, 0.4);
+  outline-offset: 2px;
+}
+
+.known-words-card.is-loading {
+  opacity: 0.7;
+}
+
+.known-words-card-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-primary);
+}
+
+.known-words-card-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+}
+
+.known-words-card-label {
+  letter-spacing: -0.01em;
+}
+
+.known-words-card-language {
+  font-size: var(--font-size-xs);
+  color: var(--text-secondary);
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-subtle);
+  padding: 2px 6px;
+  border-radius: 999px;
+}
+
+.known-words-card-stats {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--spacing-sm);
+}
+
+.known-words-card-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.known-words-card-stat .stat-label {
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+}
+
+.known-words-card-stat .stat-value {
+  font-size: var(--font-size-lg);
+  font-weight: 600;
+  color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
+}
+
+.known-words-card-stat .stat-value.stat-today {
+  color: var(--accent-success);
+}
+
+/* Modal */
+.known-words-modal {
+  max-width: 900px;
+  width: min(900px, 94vw);
+}
+
+.known-words-tabs {
+  display: flex;
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border-default);
+  padding: 0 var(--spacing-lg);
+}
+
+.known-words-tab {
+  flex: 1;
+  padding: var(--spacing-md);
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  text-align: center;
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: color 0.2s ease, border-color 0.2s ease, background 0.2s ease;
+}
+
+.known-words-tab:hover {
+  color: var(--text-primary);
+  background: rgba(0, 0, 0, 0.03);
+}
+
+[data-theme="dark"] .known-words-tab:hover {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.known-words-tab.active {
+  color: var(--accent-primary);
+  border-bottom-color: var(--accent-primary);
+}
+
+.known-words-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-md);
+}
+
+.known-words-controls {
+  display: flex;
+  gap: var(--spacing-sm);
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.known-words-search {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 10px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+  flex: 1;
+  min-width: 220px;
+}
+
+.known-words-search .input {
+  border: none;
+  background: transparent;
+  padding: 8px 0;
+  flex: 1;
+}
+
+.known-words-search .input:focus {
+  outline: none;
+}
+
+.known-words-meta {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  font-size: var(--font-size-xs);
+  color: var(--text-secondary);
+}
+
+.known-words-dot {
+  opacity: 0.6;
+}
+
+.known-words-loading {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  color: var(--text-secondary);
+  font-size: var(--font-size-sm);
+}
+
+.known-words-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--spacing-md);
+}
+
+.known-word-card {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  padding: var(--spacing-md);
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm);
+  min-height: 140px;
+}
+
+.known-word-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--spacing-sm);
+}
+
+.known-word-language {
+  font-size: var(--font-size-xs);
+  color: var(--text-secondary);
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-subtle);
+  border-radius: 999px;
+  padding: 2px 8px;
+}
+
+.known-word-term {
+  font-size: var(--font-size-lg);
+  font-weight: 600;
+  color: var(--text-primary);
+  word-break: break-word;
+  text-align: right;
+}
+
+.known-word-meta {
+  display: grid;
+  gap: 4px;
+  font-size: var(--font-size-xs);
+  color: var(--text-secondary);
+}
+
+.known-word-row {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--spacing-sm);
+}
+
+.known-word-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.known-word-pill {
+  font-size: var(--font-size-xs);
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: rgba(52, 199, 89, 0.12);
+  color: var(--accent-success);
+}
+
+.known-word-pill.secondary {
+  background: rgba(0, 122, 255, 0.12);
+  color: var(--accent-primary);
+}
+
+.known-words-empty {
+  text-align: center;
+  padding: var(--spacing-xl) var(--spacing-lg);
+  color: var(--text-secondary);
+}
+
+.known-words-empty .empty-icon {
+  font-size: 2.5rem;
+  margin-bottom: var(--spacing-sm);
+}
+
+.known-words-footer {
+  justify-content: space-between;
+  align-items: center;
+}
+
+.known-words-page-summary {
+  font-size: var(--font-size-sm);
+  color: var(--text-secondary);
+}
+
+@media (max-width: 768px) {
+  .known-words-card {
+    min-width: 130px;
+    padding: 6px 8px;
+    gap: 4px;
+  }
+
+  .known-words-card-label {
+    display: none;
+  }
+
+  .known-words-card-language {
+    font-size: 10px;
+    padding: 1px 6px;
+  }
+
+  .known-words-card-stat .stat-value {
+    font-size: var(--font-size-base);
+  }
+
+  .known-words-modal {
+    width: 94vw;
+  }
+
+  .known-words-controls {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .known-words-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .known-words-footer {
+    flex-direction: column;
+    gap: var(--spacing-sm);
+  }
+}

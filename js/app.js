@@ -19,6 +19,7 @@ import { createReviewController } from './views/review.js';
 import { createVocabLibraryController } from './views/vocab-library.js';
 import { createSettingsModalController } from './ui/settings-modal.js';
 import { createAuthModalController } from './ui/auth-modal.js';
+import { initKnownWordsUI, handleKnownWordsEscape } from './ui/known-words-ui.js';
 
 let currentView = 'bookshelf'; // 'bookshelf' | 'reader' | 'review' | 'vocab-library'
 
@@ -69,6 +70,7 @@ async function init() {
         void bookshelfController.refreshBookshelfReviewButtons();
       }
     });
+    initKnownWordsUI();
 
     setupGlobalKeyHandlers();
 
@@ -91,6 +93,7 @@ function setupGlobalKeyHandlers() {
     if (e.key === 'Escape') {
       settingsModalController.handleEscape();
       authModalController.handleEscape();
+      handleKnownWordsEscape();
       bookshelfController.handleEscape();
       vocabLibraryController.handleEscape();
       readerController.handleEscape();

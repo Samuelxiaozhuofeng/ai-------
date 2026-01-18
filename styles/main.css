@@ -3,6 +3,7 @@
 @import "./base/reset.css";
 @import "./components/header.css";
 @import "./components/buttons.css";
+@import "./components/known-words.css";
 @import "./views/reader.css";
 @import "./base/responsive.css";
 @import "./views/bookshelf.css";

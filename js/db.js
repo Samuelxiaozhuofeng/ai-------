@@ -16,6 +16,36 @@ const STORE_TOKENIZATION_CACHE = 'tokenizationCache';
 
 let db = null;
 let needsGlobalKnownSync = false;
+let globalKnownNotifyTimer = null;
+
+/**
+ * Broadcast a known-words update to the current and other tabs.
+ */
+function notifyGlobalKnownChange() {
+    if (globalKnownNotifyTimer) return;
+    globalKnownNotifyTimer = setTimeout(() => {
+        globalKnownNotifyTimer = null;
+        if (typeof window !== 'undefined' && typeof window.dispatchEvent === 'function') {
+            window.dispatchEvent(new CustomEvent('global-known-updated', { detail: { at: Date.now() } }));
+        }
+        if (typeof BroadcastChannel !== 'undefined') {
+            try {
+                const channel = new BroadcastChannel('global-known-words');
+                channel.postMessage({ type: 'updated', at: Date.now() });
+                channel.close();
+            } catch {
+                // ignore
+            }
+        }
+        if (typeof localStorage !== 'undefined') {
+            try {
+                localStorage.setItem('global-known-updated', String(Date.now()));
+            } catch {
+                // ignore
+            }
+        }
+    }, 250);
+}
 
 /**
  * Initialize the IndexedDB database
@@ -851,12 +881,168 @@ export async function listGlobalKnownByLanguage(language) {
 }
 
 /**
+ * @param {string} dateIso
+ * @param {Date} now
+ * @returns {boolean}
+ */
+function isSameLocalDay(dateIso, now) {
+    const value = typeof dateIso === 'string' ? dateIso : '';
+    if (!value) return false;
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return false;
+    return date.toDateString() === now.toDateString();
+}
+
+/**
+ * @param {IDBObjectStore} store
+ * @param {string|null} language
+ * @returns {{ source: IDBObjectStore|IDBIndex, range: IDBKeyRange|null }}
+ */
+function getGlobalKnownCursorSource(store, language) {
+    const lang = typeof language === 'string' ? language.trim() : '';
+    if (lang && store.indexNames.contains('kind_language')) {
+        return {
+            source: store.index('kind_language'),
+            range: IDBKeyRange.only(['global-known', lang])
+        };
+    }
+    if (store.indexNames.contains('kind')) {
+        return {
+            source: store.index('kind'),
+            range: IDBKeyRange.only('global-known')
+        };
+    }
+    return { source: store, range: null };
+}
+
+/**
+ * Get stats for global-known words (status = known).
+ * @param {string|null} [language]
+ * @returns {Promise<{total: number, today: number, byLanguage: Record<string, number>}>}
+ */
+export async function getKnownWordsStats(language = null) {
+    return new Promise((resolve, reject) => {
+        if (!db) {
+            reject(new Error('Database not initialized'));
+            return;
+        }
+        const lang = typeof language === 'string' ? language.trim() : '';
+        const now = new Date();
+        const transaction = db.transaction([STORE_GLOBAL_VOCAB], 'readonly');
+        const store = transaction.objectStore(STORE_GLOBAL_VOCAB);
+        const { source, range } = getGlobalKnownCursorSource(store, lang);
+        const request = source.openCursor(range);
+
+        let total = 0;
+        let today = 0;
+        const byLanguage = {};
+
+        request.onsuccess = (event) => {
+            const cursor = event.target.result;
+            if (!cursor) {
+                resolve({ total, today, byLanguage });
+                return;
+            }
+            const entry = cursor.value;
+            if (entry?.kind !== 'global-known' || entry?.status !== 'known') {
+                cursor.continue();
+                return;
+            }
+            const entryLang = typeof entry?.language === 'string' ? entry.language.trim() : '';
+            if (lang && entryLang !== lang) {
+                cursor.continue();
+                return;
+            }
+            total += 1;
+            if (isSameLocalDay(entry.updatedAt || entry.createdAt, now)) today += 1;
+            if (entryLang) {
+                byLanguage[entryLang] = (byLanguage[entryLang] || 0) + 1;
+            }
+            cursor.continue();
+        };
+
+        request.onerror = () => reject(request.error);
+    });
+}
+
+/**
+ * Query global-known words (status = known) with filters and pagination.
+ * @param {{language?: string|null, search?: string, page?: number, pageSize?: number, todayOnly?: boolean, now?: Date}} [options]
+ * @returns {Promise<{items: Array, total: number}>}
+ */
+export async function queryKnownWords(options = {}) {
+    return new Promise((resolve, reject) => {
+        if (!db) {
+            reject(new Error('Database not initialized'));
+            return;
+        }
+        const language = typeof options.language === 'string' ? options.language.trim() : '';
+        const search = typeof options.search === 'string' ? options.search.trim().toLowerCase() : '';
+        const page = Math.max(1, Number(options.page) || 1);
+        const pageSize = Math.max(1, Number(options.pageSize) || 50);
+        const todayOnly = Boolean(options.todayOnly);
+        const now = options.now instanceof Date ? options.now : new Date();
+
+        const transaction = db.transaction([STORE_GLOBAL_VOCAB], 'readonly');
+        const store = transaction.objectStore(STORE_GLOBAL_VOCAB);
+        const { source, range } = getGlobalKnownCursorSource(store, language);
+        const request = source.openCursor(range);
+
+        /** @type {Array} */
+        const matches = [];
+
+        request.onsuccess = (event) => {
+            const cursor = event.target.result;
+            if (!cursor) {
+                matches.sort((a, b) => {
+                    const aTime = new Date(a?.updatedAt || a?.createdAt || 0).getTime() || 0;
+                    const bTime = new Date(b?.updatedAt || b?.createdAt || 0).getTime() || 0;
+                    return bTime - aTime;
+                });
+                const total = matches.length;
+                const start = (page - 1) * pageSize;
+                const items = matches.slice(start, start + pageSize);
+                resolve({ items, total });
+                return;
+            }
+            const entry = cursor.value;
+            if (entry?.kind !== 'global-known' || entry?.status !== 'known') {
+                cursor.continue();
+                return;
+            }
+            const entryLang = typeof entry?.language === 'string' ? entry.language.trim() : '';
+            if (language && entryLang !== language) {
+                cursor.continue();
+                return;
+            }
+            if (todayOnly && !isSameLocalDay(entry.updatedAt || entry.createdAt, now)) {
+                cursor.continue();
+                return;
+            }
+            if (search) {
+                const wordValue = String(entry?.displayWord || entry?.word || entry?.normalizedWord || '').toLowerCase();
+                if (!wordValue.includes(search)) {
+                    cursor.continue();
+                    return;
+                }
+            }
+            matches.push(entry);
+            cursor.continue();
+        };
+
+        request.onerror = () => reject(request.error);
+    });
+}
+
+/**
  * Upsert a global-known entry.
  * @param {Object} item
  * @returns {Promise<Object>}
  */
 export async function upsertGlobalKnownItem(item) {
-    return upsertGlobalVocabItem({ ...item, kind: 'global-known' });
+    const record = await upsertGlobalVocabItem({ ...item, kind: 'global-known' });
+    notifyGlobalKnownChange();
+    return record;
 }
 
 /**
@@ -867,7 +1053,9 @@ export async function upsertGlobalKnownItem(item) {
  */
 export async function upsertGlobalKnownItems(items, options = {}) {
     const normalized = Array.isArray(items) ? items.map((item) => ({ ...item, kind: 'global-known' })) : [];
-    return upsertGlobalVocabItems(normalized, options);
+    const records = await upsertGlobalVocabItems(normalized, options);
+    if (records.length) notifyGlobalKnownChange();
+    return records;
 }
 
 /**
@@ -877,7 +1065,9 @@ export async function upsertGlobalKnownItems(items, options = {}) {
  * @returns {Promise<boolean>}
  */
 export async function deleteGlobalKnownItem(idOrWord, language = null) {
-    return deleteGlobalVocabItem(idOrWord, language, 'global-known');
+    const deleted = await deleteGlobalVocabItem(idOrWord, language, 'global-known');
+    if (deleted) notifyGlobalKnownChange();
+    return deleted;
 }
 
 /**

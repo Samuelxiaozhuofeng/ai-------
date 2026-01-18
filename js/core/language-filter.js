@@ -31,6 +31,10 @@ export function setLanguageFilter(language) {
   } catch {
     // ignore
   }
+  try {
+    window.dispatchEvent(new CustomEvent('language-filter-changed', { detail: { language } }));
+  } catch {
+    // ignore
+  }
   return currentLanguageFilter;
 }
-
