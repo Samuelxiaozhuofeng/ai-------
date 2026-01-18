@@ -13,6 +13,7 @@ import { createWordHighlighter } from './word-highlighter.js';
 import { createVocabPanel } from './vocab-panel.js';
 import { createPaginationEngine } from './pagination-engine.js';
 import { createChapterManager } from './chapter-manager.js';
+import { createZenModeController } from './zen-mode-controller.js';
 
 /**
  * @param {import('../../ui/dom-refs.js').elements} elements
@@ -131,15 +132,31 @@ export function createReaderController(elements) {
     switchTab: vocabPanel.switchTab
   });
 
+  const zenModeController = createZenModeController(elements);
+
   /** @type {{ onBackToBookshelf: () => void } | null} */
   let navigation = null;
+
+  function isWordTargetClick(event) {
+    const target = event?.target?.closest?.('.word');
+    return Boolean(target && elements.readingContent.contains(target));
+  }
+
+  function handleReadingWordClick(event) {
+    if (zenModeController.isZenMode() && isWordTargetClick(event)) {
+      zenModeController.exitZenMode({ revealSidebar: true });
+    }
+    wordHighlighter.handleReadingWordClick(event);
+  }
 
   function init({ onBackToBookshelf }) {
     navigation = { onBackToBookshelf };
 
+    zenModeController.init();
+
     elements.backToShelfBtn.addEventListener('click', () => navigation?.onBackToBookshelf?.());
 
-    elements.readingContent.addEventListener('click', wordHighlighter.handleReadingWordClick);
+    elements.readingContent.addEventListener('click', handleReadingWordClick);
     elements.readingContent.addEventListener('mouseup', wordHighlighter.handleReadingSelectionEnd);
     elements.readingContent.addEventListener('touchend', wordHighlighter.handleReadingSelectionEnd);
 
@@ -150,13 +167,15 @@ export function createReaderController(elements) {
     elements.readingContent.addEventListener('touchcancel', wordHighlighter.resetPhraseSelection, { passive: true });
 
     // Tap/click edge zones to flip pages.
-    const edgeZoneRatio = 0.3;
+    const defaultEdgeZoneRatio = 0.3;
+    const zenEdgeZoneRatio = 0.15;
     let lastTouchEndAt = 0;
 
     function getEdgeAction(clientX) {
       const w = window.innerWidth || 0;
       if (!w) return null;
-      const edge = w * edgeZoneRatio;
+      const ratio = zenModeController.isZenMode() ? zenEdgeZoneRatio : defaultEdgeZoneRatio;
+      const edge = w * ratio;
       if (clientX <= edge) return 'prev';
       if (clientX >= (w - edge)) return 'next';
       return null;
@@ -243,12 +262,28 @@ export function createReaderController(elements) {
   }
 
   function handleEscape() {
+    if (zenModeController.isZenMode()) {
+      zenModeController.exitZenMode();
+      return;
+    }
     chapters.closeChapterSelectModal();
   }
 
   function handleKeyDown(event) {
+    if (event.key === 'z' || event.key === 'Z') {
+      if (event.metaKey || event.ctrlKey || event.altKey) return false;
+      event.preventDefault();
+      zenModeController.toggleZenMode();
+      return true;
+    }
     if (!state.isPageFlipMode) return false;
     if (!state.currentBookId) return false;
+
+    if ((event.key === ' ' || event.code === 'Space') && zenModeController.isZenMode()) {
+      event.preventDefault();
+      pagination.goToNextPage();
+      return true;
+    }
 
     if (event.key === 'ArrowLeft') {
       event.preventDefault();

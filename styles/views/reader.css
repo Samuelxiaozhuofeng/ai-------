@@ -158,6 +158,50 @@
   border-color: var(--border-subtle);
 }
 
+.reader-view.zen-mode .app-header,
+.reader-view.zen-mode .reading-toolbar,
+.reader-view.zen-mode .reader-footer {
+  position: fixed;
+  left: 0;
+  right: 0;
+  z-index: 60;
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(-110%);
+  transition: transform 0.3s ease, opacity 0.3s ease;
+}
+
+.reader-view.zen-mode .app-header {
+  top: 0;
+}
+
+.reader-view.zen-mode .reading-toolbar {
+  top: var(--header-height);
+  z-index: 55;
+}
+
+.reader-view.zen-mode .reader-footer {
+  bottom: 0;
+  transform: translateY(110%);
+  z-index: 55;
+}
+
+.reader-view.zen-mode.ui-revealed .app-header,
+.reader-view.zen-mode.ui-revealed .reading-toolbar,
+.reader-view.zen-mode.ui-revealed .reader-footer {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateY(0);
+}
+
+.reader-view.zen-mode .resize-handle {
+  display: none;
+}
+
+.reader-view.zen-mode .vocab-panel {
+  transition: width 0.3s ease, opacity 0.3s ease;
+}
+
 .reading-content {
   flex: 1;
   overflow-y: auto;

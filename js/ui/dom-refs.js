@@ -77,6 +77,7 @@ export const elements = {
   toggleSidebarBtn: document.getElementById('toggleSidebarBtn'),
   themeToggleBtn: document.getElementById('themeToggleBtn'),
   typographyBtn: document.getElementById('typographyBtn'),
+  zenModeBtn: document.getElementById('zenModeBtn'),
   themeIcon: document.getElementById('themeIcon'),
 
   // Main content
