@@ -208,6 +208,7 @@ export function createWordHighlighter({
         normalized
           && getAutoStudyEnabled()
           && effectiveStatus !== WORD_STATUSES.LEARNING
+          && effectiveStatus !== WORD_STATUSES.KNOWN
       );
       if (shouldAutoStudy) {
         setSelectedWordStatus(WORD_STATUSES.LEARNING, { trigger: 'click' })
@@ -292,6 +293,7 @@ export function createWordHighlighter({
       state.selectedWord
         && getAutoStudyEnabled()
         && effectiveStatus !== WORD_STATUSES.LEARNING
+        && effectiveStatus !== WORD_STATUSES.KNOWN
     );
     if (shouldAutoStudy) {
       setSelectedWordStatus(WORD_STATUSES.LEARNING, { trigger: 'click' })

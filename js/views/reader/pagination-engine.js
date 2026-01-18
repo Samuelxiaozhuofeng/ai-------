@@ -4,6 +4,9 @@ import {
   hashCanonicalText,
   renderTokenizedChapterContent
 } from '../../utils/tokenizer.js';
+import { globalVocabByWord } from '../../core/global-vocab-cache.js';
+import { makeGlobalVocabId, upsertGlobalKnownItems } from '../../db.js';
+import { isGlobalKnownEnabled } from '../../storage.js';
 import { updatePageProgressCloud } from '../../supabase/progress-repo.js';
 import { upsertBookVocabularyItems } from '../../supabase/vocabulary-repo.js';
 import { WORD_STATUSES } from '../../word-status.js';
@@ -21,6 +24,50 @@ export function createPaginationEngine({
   /** @type {((index: number, options?: any) => Promise<void>) | null} */
   let loadChapter = null;
   let renderRequestId = 0;
+  let globalKnownFlushTimer = null;
+  const pendingGlobalKnownUpdates = new Map();
+  const GLOBAL_KNOWN_FLUSH_MS = 2000;
+
+  function queueGlobalKnownUpdate(entry) {
+    if (!entry?.id) return;
+    pendingGlobalKnownUpdates.set(entry.id, entry);
+    scheduleGlobalKnownFlush();
+  }
+
+  function scheduleGlobalKnownFlush() {
+    if (globalKnownFlushTimer) return;
+    globalKnownFlushTimer = setTimeout(() => {
+      void flushGlobalKnownUpdates();
+    }, GLOBAL_KNOWN_FLUSH_MS);
+  }
+
+  async function flushGlobalKnownUpdates() {
+    if (globalKnownFlushTimer) {
+      clearTimeout(globalKnownFlushTimer);
+      globalKnownFlushTimer = null;
+    }
+    if (pendingGlobalKnownUpdates.size === 0) return;
+    const items = Array.from(pendingGlobalKnownUpdates.values());
+    pendingGlobalKnownUpdates.clear();
+    try {
+      const records = await upsertGlobalKnownItems(items);
+      records.forEach((record) => {
+        const key = record?.id;
+        if (key) globalVocabByWord.set(key, record);
+      });
+    } catch (error) {
+      console.warn('Failed to persist global-known updates:', error);
+    }
+  }
+
+  function handleVisibilityChange() {
+    if (document.visibilityState === 'hidden') {
+      void flushGlobalKnownUpdates();
+    }
+  }
+
+  document.addEventListener('visibilitychange', handleVisibilityChange);
+  window.addEventListener('pagehide', () => void flushGlobalKnownUpdates());
 
   function setLoadChapter(fn) {
     loadChapter = typeof fn === 'function' ? fn : null;
@@ -352,37 +399,125 @@ export function createPaginationEngine({
     if (!snapshot?.bookId) return;
 
     const updates = [];
-    snapshot.words.forEach((displayWord, normalizedWord) => {
-      const prevCount = state.encounterCountByWord.get(normalizedWord) || 0;
-      const nextCount = prevCount + 1;
-      state.encounterCountByWord.set(normalizedWord, nextCount);
+    const nowIso = new Date().toISOString();
+    const language = getCurrentBookLanguage();
+    const globalKnownEnabled = isGlobalKnownEnabled();
 
+    snapshot.words.forEach((displayWord, normalizedWord) => {
+      if (!normalizedWord) return;
       if (snapshot.clicked.has(normalizedWord)) return;
 
-      const status = getEffectiveWordStatus(normalizedWord);
-      if (status === WORD_STATUSES.NEW && nextCount >= 1) {
-        updates.push({
-          bookId: snapshot.bookId,
-          language: getCurrentBookLanguage(),
-          word: normalizedWord,
-          displayWord,
-          status: WORD_STATUSES.SEEN,
-          sourceChapterId: snapshot.chapterId
-        });
+      const localEntry = state.vocabularyByWord.get(normalizedWord) || null;
+      const localStatus = localEntry?.status || null;
+      const effectiveStatus = getEffectiveWordStatus(normalizedWord);
+
+      if (!globalKnownEnabled) {
+        const prevCount = state.encounterCountByWord.get(normalizedWord) || 0;
+        const nextCount = prevCount + 1;
+        state.encounterCountByWord.set(normalizedWord, nextCount);
+
+        if (effectiveStatus === WORD_STATUSES.NEW && nextCount >= 1) {
+          updates.push({
+            ...(localEntry || {}),
+            bookId: snapshot.bookId,
+            language,
+            word: normalizedWord,
+            displayWord: localEntry?.displayWord || displayWord,
+            status: WORD_STATUSES.SEEN,
+            sourceChapterId: localEntry?.sourceChapterId || snapshot.chapterId
+          });
+          return;
+        }
+
+        if (effectiveStatus === WORD_STATUSES.SEEN && nextCount >= 2) {
+          updates.push({
+            ...(localEntry || {}),
+            bookId: snapshot.bookId,
+            language: localEntry?.language || language,
+            word: normalizedWord,
+            displayWord: localEntry?.displayWord || displayWord,
+            status: WORD_STATUSES.KNOWN,
+            sourceChapterId: localEntry?.sourceChapterId || snapshot.chapterId
+          });
+        }
         return;
       }
 
-      if (status === WORD_STATUSES.SEEN && nextCount >= 2) {
-        const existing = state.vocabularyByWord.get(normalizedWord) || {};
-        updates.push({
-          ...existing,
-          bookId: snapshot.bookId,
-          language: existing.language || getCurrentBookLanguage(),
-          word: normalizedWord,
-          displayWord: existing.displayWord || displayWord,
-          status: WORD_STATUSES.KNOWN,
-          sourceChapterId: existing.sourceChapterId || snapshot.chapterId
-        });
+      const globalKey = makeGlobalVocabId(language, normalizedWord);
+      const globalEntry = globalVocabByWord.get(globalKey) || null;
+      const globalKnown = globalEntry?.kind === 'global-known' ? globalEntry : null;
+      const globalKnownStatus = globalKnown?.status || null;
+      const prevGlobalCount = typeof globalKnown?.encounterCount === 'number'
+        ? globalKnown.encounterCount
+        : (globalKnownStatus === WORD_STATUSES.KNOWN ? 2 : globalKnownStatus === WORD_STATUSES.SEEN ? 1 : 0);
+
+      if (effectiveStatus === WORD_STATUSES.NEW || effectiveStatus === WORD_STATUSES.SEEN) {
+        const nextGlobalCount = prevGlobalCount + 1;
+        const nextGlobalStatus = nextGlobalCount >= 2 ? WORD_STATUSES.KNOWN : WORD_STATUSES.SEEN;
+        const sourceBooks = new Set(Array.isArray(globalKnown?.sourceBooks) ? globalKnown.sourceBooks : []);
+        if (snapshot.bookId) sourceBooks.add(snapshot.bookId);
+
+        const nextGlobalEntry = {
+          ...(globalKnown || {}),
+          id: globalKey,
+          kind: 'global-known',
+          language,
+          normalizedWord,
+          displayWord: globalKnown?.displayWord || displayWord,
+          status: nextGlobalStatus,
+          encounterCount: nextGlobalCount,
+          lastEncounteredAt: nowIso,
+          sourceBooks: Array.from(sourceBooks),
+          createdAt: globalKnown?.createdAt || nowIso,
+          updatedAt: nowIso
+        };
+
+        globalVocabByWord.set(globalKey, nextGlobalEntry);
+        queueGlobalKnownUpdate(nextGlobalEntry);
+
+        if (nextGlobalStatus === WORD_STATUSES.SEEN) {
+          if (localStatus !== WORD_STATUSES.SEEN && localStatus !== WORD_STATUSES.LEARNING && localStatus !== WORD_STATUSES.KNOWN) {
+            updates.push({
+              ...(localEntry || {}),
+              bookId: snapshot.bookId,
+              language,
+              word: normalizedWord,
+              displayWord: localEntry?.displayWord || displayWord,
+              status: WORD_STATUSES.SEEN,
+              sourceChapterId: localEntry?.sourceChapterId || snapshot.chapterId
+            });
+          }
+          return;
+        }
+
+        if (nextGlobalStatus === WORD_STATUSES.KNOWN) {
+          if (localStatus !== WORD_STATUSES.KNOWN && localStatus !== WORD_STATUSES.LEARNING) {
+            updates.push({
+              ...(localEntry || {}),
+              bookId: snapshot.bookId,
+              language: localEntry?.language || language,
+              word: normalizedWord,
+              displayWord: localEntry?.displayWord || displayWord,
+              status: WORD_STATUSES.KNOWN,
+              sourceChapterId: localEntry?.sourceChapterId || snapshot.chapterId
+            });
+          }
+        }
+        return;
+      }
+
+      if (globalKnownStatus === WORD_STATUSES.KNOWN) {
+        if (localStatus !== WORD_STATUSES.KNOWN && localStatus !== WORD_STATUSES.LEARNING) {
+          updates.push({
+            ...(localEntry || {}),
+            bookId: snapshot.bookId,
+            language: localEntry?.language || language,
+            word: normalizedWord,
+            displayWord: localEntry?.displayWord || displayWord,
+            status: WORD_STATUSES.KNOWN,
+            sourceChapterId: localEntry?.sourceChapterId || snapshot.chapterId
+          });
+        }
       }
     });
 

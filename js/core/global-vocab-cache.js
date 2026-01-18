@@ -1,5 +1,5 @@
 import { listGlobalVocab, upsertGlobalVocabItem } from '../db.js';
-import { listGlobalVocabRemote } from '../supabase/global-vocab-repo.js';
+import { listGlobalVocabRemote, listGlobalVocabRemoteByKind } from '../supabase/global-vocab-repo.js';
 
 /** @type {Map<string, any>} */
 export let globalVocabByWord = new Map(); // globalId -> global vocab entry
@@ -8,7 +8,11 @@ export async function refreshGlobalVocabCache() {
   try {
     let remoteItems = [];
     try {
-      remoteItems = await listGlobalVocabRemote();
+      const [learningItems, knownItems] = await Promise.all([
+        listGlobalVocabRemote(),
+        listGlobalVocabRemoteByKind('global-known')
+      ]);
+      remoteItems = [...learningItems, ...knownItems];
     } catch (error) {
       console.warn('Failed to fetch global vocabulary from Supabase:', error);
     }

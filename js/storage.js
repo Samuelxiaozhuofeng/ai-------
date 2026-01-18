@@ -10,6 +10,7 @@ const STORAGE_KEYS = {
   LAYOUT: "language-reader-layout",
   READING_SETTINGS: "language-reader-reading-settings",
   AUTO_STUDY: "language-reader-auto-study",
+  GLOBAL_KNOWN: "enableGlobalKnownWords",
 };
 
 export const SUPPORTED_LANGUAGES = /** @type {const} */ ({
@@ -221,6 +222,26 @@ export function saveAutoStudyPreference(enabled) {
     return true;
   } catch (e) {
     console.error("Failed to save auto study preference:", e);
+    return false;
+  }
+}
+
+export function isGlobalKnownEnabled() {
+  try {
+    const stored = localStorage.getItem(STORAGE_KEYS.GLOBAL_KNOWN);
+    if (stored != null) return stored === 'true';
+  } catch (e) {
+    console.error("Failed to load global known preference:", e);
+  }
+  return true;
+}
+
+export function setGlobalKnownEnabled(enabled) {
+  try {
+    localStorage.setItem(STORAGE_KEYS.GLOBAL_KNOWN, Boolean(enabled) ? 'true' : 'false');
+    return true;
+  } catch (e) {
+    console.error("Failed to save global known preference:", e);
     return false;
   }
 }

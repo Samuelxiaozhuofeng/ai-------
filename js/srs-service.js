@@ -245,6 +245,7 @@ export async function ensureGlobalLearningCard(params) {
   const analysisFields = normalizeAnalysisFields(params?.analysis);
   const merged = await ensureFsrsCardFields({
     ...(existing || {}),
+    kind: 'global',
     language,
     normalizedWord: normalized,
     displayWord: existing?.displayWord || params?.displayWord || normalized,
@@ -285,6 +286,8 @@ export async function removeBookFromGlobalLearningCard(normalizedWord, bookId, l
   const lang = typeof language === 'string' ? language.trim() : '';
   const existing = lang ? await getGlobalVocabItem(normalized, lang) : await getGlobalVocabItem(normalized);
   if (!existing) return;
+  if (existing?.kind && existing.kind !== 'global') return;
+  if (existing?.status && existing.status !== 'learning') return;
 
   const sourceBooks = Array.isArray(existing.sourceBooks) ? existing.sourceBooks : [];
   const nextSourceBooks = sourceBooks.filter((id) => id !== bookId);
@@ -315,6 +318,7 @@ export async function upsertGlobalAnalysis(normalizedWord, analysis, contextSent
   const lang = typeof language === 'string' ? language.trim() : '';
   const existing = lang ? await getGlobalVocabItem(normalized, lang) : await getGlobalVocabItem(normalized);
   if (!existing) return null;
+  if (existing?.kind && existing.kind !== 'global') return null;
 
   const analysisFields = normalizeAnalysisFields(analysis);
   return upsertGlobalVocabItem({

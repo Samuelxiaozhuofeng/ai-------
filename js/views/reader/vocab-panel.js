@@ -1,9 +1,10 @@
 import { WORD_STATUSES } from '../../word-status.js';
 import { showNotification } from '../../ui/notifications.js';
 import { ensureGlobalLearningCard, removeBookFromGlobalLearningCard, upsertGlobalAnalysis } from '../../srs-service.js';
-import { getSettings } from '../../storage.js';
+import { getSettings, isGlobalKnownEnabled } from '../../storage.js';
 import {
   makeGlobalVocabId,
+  upsertGlobalKnownItem,
   // keep makeGlobalVocabId from IndexedDB helpers
 } from '../../db.js';
 import { deleteBookVocabularyItem, listBookVocabulary, upsertBookVocabularyItem } from '../../supabase/vocabulary-repo.js';
@@ -426,6 +427,37 @@ export function createVocabPanel({
     return null;
   }
 
+  async function ensureGlobalKnownEntry({ normalizedWord, displayWord, bookId, language }) {
+    if (!isGlobalKnownEnabled()) return null;
+    const lang = typeof language === 'string' ? language.trim() : '';
+    if (!lang || !normalizedWord) return null;
+    const key = makeGlobalVocabId(lang, normalizedWord);
+    const nowIso = new Date().toISOString();
+    const existing = globalVocabByWord.get(key) || null;
+    const sourceBooks = new Set(Array.isArray(existing?.sourceBooks) ? existing.sourceBooks : []);
+    if (bookId) sourceBooks.add(bookId);
+    const encounterCount = Math.max(
+      typeof existing?.encounterCount === 'number' ? existing.encounterCount : 0,
+      2
+    );
+
+    const entry = await upsertGlobalKnownItem({
+      ...(existing || {}),
+      id: key,
+      language: lang,
+      normalizedWord,
+      displayWord: existing?.displayWord || displayWord || normalizedWord,
+      status: WORD_STATUSES.KNOWN,
+      encounterCount,
+      lastEncounteredAt: existing?.lastEncounteredAt || nowIso,
+      sourceBooks: Array.from(sourceBooks),
+      createdAt: existing?.createdAt || nowIso,
+      updatedAt: nowIso
+    });
+    if (entry) globalVocabByWord.set(key, entry);
+    return entry;
+  }
+
   function isAiConfigured() {
     const settings = getSettings();
     return Boolean(settings.apiUrl && settings.apiKey && settings.model);
@@ -668,9 +700,19 @@ export function createVocabPanel({
         contextSentence: updated?.context?.currentSentence || state.selectedWordContext?.currentSentence || null
       });
       storeGlobalVocabEntry(global);
-    } else if (prevStatus === WORD_STATUSES.LEARNING) {
-      await removeBookFromGlobalLearningCard(updated.word, state.currentBookId, state.currentBook?.language || null);
-      await refreshGlobalVocabCache();
+    } else {
+      if (prevStatus === WORD_STATUSES.LEARNING) {
+        await removeBookFromGlobalLearningCard(updated.word, state.currentBookId, state.currentBook?.language || null);
+        await refreshGlobalVocabCache();
+      }
+      if (nextStatus === WORD_STATUSES.KNOWN) {
+        await ensureGlobalKnownEntry({
+          language: getCurrentBookLanguage(),
+          normalizedWord: updated.word,
+          displayWord: updated.displayWord || state.selectedWordDisplay || updated.word,
+          bookId: state.currentBookId
+        });
+      }
     }
 
     if (applyWordStatusesToContainer) applyWordStatusesToContainer(elements.readingContent);
@@ -713,9 +755,19 @@ export function createVocabPanel({
         contextSentence: updated?.context?.currentSentence || null
       });
       storeGlobalVocabEntry(global);
-    } else if (prevStatus === WORD_STATUSES.LEARNING) {
-      await removeBookFromGlobalLearningCard(updated.word, state.currentBookId, state.currentBook?.language || null);
-      await refreshGlobalVocabCache();
+    } else {
+      if (prevStatus === WORD_STATUSES.LEARNING) {
+        await removeBookFromGlobalLearningCard(updated.word, state.currentBookId, state.currentBook?.language || null);
+        await refreshGlobalVocabCache();
+      }
+      if (nextStatus === WORD_STATUSES.KNOWN) {
+        await ensureGlobalKnownEntry({
+          language: getCurrentBookLanguage(),
+          normalizedWord: updated.word,
+          displayWord: updated.displayWord || updated.word,
+          bookId: state.currentBookId
+        });
+      }
     }
 
     await refreshVocabularyCache();

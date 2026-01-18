@@ -6,7 +6,7 @@
 import { makeVocabId, normalizeWord } from './word-status.js';
 
 const DB_NAME = 'LanguageReaderDB';
-const DB_VERSION = 6;
+const DB_VERSION = 7;
 const STORE_BOOKS = 'books';
 const STORE_VOCABULARY = 'vocabulary';
 const STORE_PROGRESS = 'progress';
@@ -15,6 +15,7 @@ const STORE_EPUB_FILES = 'epubFiles';
 const STORE_TOKENIZATION_CACHE = 'tokenizationCache';
 
 let db = null;
+let needsGlobalKnownSync = false;
 
 /**
  * Initialize the IndexedDB database
@@ -37,6 +38,13 @@ export async function initDB() {
         request.onsuccess = () => {
             db = request.result;
             console.log('📚 IndexedDB initialized');
+            if (needsGlobalKnownSync) {
+                queueMicrotask(() => {
+                    syncGlobalKnownRemote().catch((error) => {
+                        console.warn('Global-known remote sync failed:', error);
+                    });
+                });
+            }
             resolve(db);
         };
 
@@ -73,7 +81,7 @@ export async function initDB() {
                 console.log('📚 Created progress store');
             }
 
-            // Create global vocabulary store (FSRS cards live here)
+            // Create global vocabulary store (FSRS cards + global-known live here)
             if (oldVersion < 3 && !database.objectStoreNames.contains(STORE_GLOBAL_VOCAB)) {
                 const store = database.createObjectStore(STORE_GLOBAL_VOCAB, { keyPath: 'id' });
                 store.createIndex('status', 'status', { unique: false });
@@ -81,6 +89,8 @@ export async function initDB() {
                 store.createIndex('status_due', ['status', 'due'], { unique: false });
                 store.createIndex('updatedAt', 'updatedAt', { unique: false });
                 store.createIndex('language', 'language', { unique: false });
+                store.createIndex('kind', 'kind', { unique: false });
+                store.createIndex('kind_language', ['kind', 'language'], { unique: false });
                 store.createIndex('status_language', ['status', 'language'], { unique: false });
                 store.createIndex('status_language_due', ['status', 'language', 'due'], { unique: false });
                 console.log('📚 Created global vocabulary store');
@@ -122,6 +132,12 @@ export async function initDB() {
                 const store = transaction.objectStore(STORE_GLOBAL_VOCAB);
                 if (!store.indexNames.contains('language')) {
                     store.createIndex('language', 'language', { unique: false });
+                }
+                if (!store.indexNames.contains('kind')) {
+                    store.createIndex('kind', 'kind', { unique: false });
+                }
+                if (!store.indexNames.contains('kind_language')) {
+                    store.createIndex('kind_language', ['kind', 'language'], { unique: false });
                 }
                 if (!store.indexNames.contains('status_language')) {
                     store.createIndex('status_language', ['status', 'language'], { unique: false });
@@ -304,44 +320,168 @@ export async function initDB() {
                 };
             }
 
-            // Migration: legacy data cleanup for multi-language support (no language field)
-            if (oldVersion < 4 && transaction && database.objectStoreNames.contains(STORE_BOOKS)) {
+            // Migration: backfill missing language + global-known migration
+            if (oldVersion < 7 && transaction && database.objectStoreNames.contains(STORE_BOOKS)) {
+                const defaultLanguage = 'en';
+                const nowIso = new Date().toISOString();
                 const booksStore = transaction.objectStore(STORE_BOOKS);
                 const vocabStore = database.objectStoreNames.contains(STORE_VOCABULARY) ? transaction.objectStore(STORE_VOCABULARY) : null;
-                const progressStore = database.objectStoreNames.contains(STORE_PROGRESS) ? transaction.objectStore(STORE_PROGRESS) : null;
                 const globalStore = database.objectStoreNames.contains(STORE_GLOBAL_VOCAB) ? transaction.objectStore(STORE_GLOBAL_VOCAB) : null;
+                const bookLanguageById = new Map();
+                let warned = false;
 
-                let didCleanup = false;
-                const cleanupAll = () => {
-                    if (didCleanup) return;
-                    didCleanup = true;
-                    try { booksStore.clear(); } catch { /* ignore */ }
-                    try { vocabStore?.clear(); } catch { /* ignore */ }
-                    try { progressStore?.clear(); } catch { /* ignore */ }
-                    try { globalStore?.clear(); } catch { /* ignore */ }
-                    console.log('🧹 Cleared legacy data (missing language fields)');
+                const warnMissingLanguage = () => {
+                    if (warned) return;
+                    warned = true;
+                    console.warn('⚠️ Legacy data missing language, defaulting to en.');
                 };
 
-                const scanForMissingLanguage = (store) => {
-                    if (!store) return;
-                    const cursorRequest = store.openCursor();
+                const normalizeLanguage = (value) => {
+                    const raw = typeof value === 'string' ? value.trim() : '';
+                    return raw || '';
+                };
+
+                const normalizeGlobalStore = () => {
+                    if (!globalStore) {
+                        migrateVocabStore();
+                        return;
+                    }
+                    const cursorRequest = globalStore.openCursor();
                     cursorRequest.onsuccess = () => {
-                        if (didCleanup) return;
                         const cursor = cursorRequest.result;
-                        if (!cursor) return;
-                        const record = cursor.value;
-                        const language = record?.language;
-                        if (typeof language !== 'string' || !language.trim()) {
-                            cleanupAll();
+                        if (!cursor) {
+                            migrateVocabStore();
                             return;
+                        }
+                        const entry = cursor.value || {};
+                        const parsed = parseGlobalVocabId(entry?.id);
+                        const normalizedWord = normalizeWord(entry?.normalizedWord || entry?.word || parsed.normalizedWord || entry?.id || '');
+
+                        let language = normalizeLanguage(entry?.language) || parsed.language || '';
+                        if (!language && Array.isArray(entry?.sourceBooks)) {
+                            for (const bookId of entry.sourceBooks) {
+                                const inferred = bookLanguageById.get(bookId);
+                                if (inferred) {
+                                    language = inferred;
+                                    break;
+                                }
+                            }
+                        }
+                        if (!language) {
+                            language = defaultLanguage;
+                            warnMissingLanguage();
+                        }
+
+                        const kind = typeof entry?.kind === 'string' && entry.kind.trim() ? entry.kind.trim() : 'global';
+                        const nextId = language && normalizedWord ? makeGlobalVocabId(language, normalizedWord) : entry?.id;
+                        const updated = {
+                            ...entry,
+                            id: nextId,
+                            kind,
+                            language,
+                            normalizedWord,
+                            updatedAt: entry?.updatedAt || nowIso,
+                            createdAt: entry?.createdAt || nowIso
+                        };
+
+                        if (entry?.id && nextId && entry.id !== nextId) {
+                            globalStore.put(updated);
+                            globalStore.delete(entry.id);
+                        } else {
+                            cursor.update(updated);
                         }
                         cursor.continue();
                     };
                 };
 
-                scanForMissingLanguage(booksStore);
-                scanForMissingLanguage(vocabStore);
-                scanForMissingLanguage(globalStore);
+                const migrateVocabStore = () => {
+                    if (!vocabStore) return;
+                    const cursorRequest = vocabStore.openCursor();
+                    cursorRequest.onsuccess = () => {
+                        const cursor = cursorRequest.result;
+                        if (!cursor) return;
+
+                        const entry = cursor.value || {};
+                        const normalizedWord = normalizeWord(entry?.word || '');
+                        if (!normalizedWord) {
+                            cursor.continue();
+                            return;
+                        }
+
+                        let language = normalizeLanguage(entry?.language) || bookLanguageById.get(entry?.bookId) || '';
+                        if (!language) {
+                            language = defaultLanguage;
+                            warnMissingLanguage();
+                        }
+
+                        const needsUpdate = entry?.language !== language || entry?.word !== normalizedWord;
+                        if (needsUpdate) {
+                            entry.language = language;
+                            entry.word = normalizedWord;
+                            cursor.update(entry);
+                        }
+
+                        if (!globalStore || entry?.status !== 'known') {
+                            cursor.continue();
+                            return;
+                        }
+
+                        const globalId = makeGlobalVocabId(language, normalizedWord);
+                        const getReq = globalStore.get(globalId);
+                        getReq.onsuccess = () => {
+                            const existing = getReq.result || null;
+                            if (existing?.kind === 'global' && existing?.status === 'learning') {
+                                cursor.continue();
+                                return;
+                            }
+
+                            const sourceBooks = new Set(Array.isArray(existing?.sourceBooks) ? existing.sourceBooks : []);
+                            if (entry?.bookId) sourceBooks.add(entry.bookId);
+
+                            const existingCount = typeof existing?.encounterCount === 'number'
+                                ? existing.encounterCount
+                                : (existing?.status === 'known' ? 2 : existing?.status === 'seen' ? 1 : 0);
+                            const encounterCount = Math.max(existingCount, 2);
+
+                            needsGlobalKnownSync = true;
+                            globalStore.put({
+                                id: globalId,
+                                kind: 'global-known',
+                                language,
+                                normalizedWord,
+                                displayWord: existing?.displayWord || entry?.displayWord || normalizedWord,
+                                status: 'known',
+                                encounterCount,
+                                lastEncounteredAt: existing?.lastEncounteredAt || entry?.updatedAt || nowIso,
+                                sourceBooks: Array.from(sourceBooks),
+                                createdAt: existing?.createdAt || entry?.createdAt || nowIso,
+                                updatedAt: nowIso
+                            });
+                            cursor.continue();
+                        };
+                        getReq.onerror = () => cursor.continue();
+                    };
+                };
+
+                const booksCursor = booksStore.openCursor();
+                booksCursor.onsuccess = () => {
+                    const cursor = booksCursor.result;
+                    if (!cursor) {
+                        normalizeGlobalStore();
+                        return;
+                    }
+
+                    const book = cursor.value || {};
+                    let language = normalizeLanguage(book?.language);
+                    if (!language) {
+                        language = defaultLanguage;
+                        warnMissingLanguage();
+                        book.language = language;
+                        cursor.update(book);
+                    }
+                    if (book?.id) bookLanguageById.set(book.id, language);
+                    cursor.continue();
+                };
             }
         };
     });
@@ -592,6 +732,211 @@ export async function listGlobalVocab() {
 }
 
 /**
+ * List global vocabulary items by kind (optionally filtered by language).
+ * @param {string} kind
+ * @param {string|null} [language]
+ * @returns {Promise<Array>}
+ */
+export async function listGlobalVocabByKind(kind, language = null) {
+    return new Promise((resolve, reject) => {
+        if (!db) {
+            reject(new Error('Database not initialized'));
+            return;
+        }
+        const targetKind = typeof kind === 'string' ? kind.trim() : '';
+        if (!targetKind) {
+            resolve([]);
+            return;
+        }
+
+        const transaction = db.transaction([STORE_GLOBAL_VOCAB], 'readonly');
+        const store = transaction.objectStore(STORE_GLOBAL_VOCAB);
+        const lang = typeof language === 'string' ? language.trim() : '';
+
+        if (lang && store.indexNames.contains('kind_language')) {
+            const index = store.index('kind_language');
+            const request = index.getAll([targetKind, lang]);
+            request.onsuccess = () => resolve(request.result || []);
+            request.onerror = () => reject(request.error);
+            return;
+        }
+
+        if (store.indexNames.contains('kind')) {
+            const index = store.index('kind');
+            const request = index.getAll(targetKind);
+            request.onsuccess = () => {
+                const all = request.result || [];
+                resolve(lang ? all.filter((it) => it?.language === lang) : all);
+            };
+            request.onerror = () => reject(request.error);
+            return;
+        }
+
+        const fallback = store.getAll();
+        fallback.onsuccess = () => {
+            const all = fallback.result || [];
+            resolve(all.filter((it) => it?.kind === targetKind && (!lang || it?.language === lang)));
+        };
+        fallback.onerror = () => reject(fallback.error);
+    });
+}
+
+async function syncGlobalKnownRemote() {
+    const items = await listGlobalVocabByKind('global-known');
+    if (!items || items.length === 0) return;
+    try {
+        const mod = await import('./supabase/global-vocab-repo.js');
+        await mod.upsertGlobalVocabRemoteItems(items);
+    } catch (error) {
+        console.warn('Global-known remote sync failed:', error);
+    }
+}
+
+/**
+ * Get a global-known entry by word + language.
+ * @param {string} word
+ * @param {string} language
+ * @returns {Promise<Object|null>}
+ */
+export async function getGlobalKnownItem(word, language) {
+    const entry = await getGlobalVocabItem(word, language);
+    if (!entry || entry?.kind !== 'global-known') return null;
+    return entry;
+}
+
+/**
+ * List global-known entries for a language.
+ * @param {string} language
+ * @returns {Promise<Array>}
+ */
+export async function listGlobalKnownByLanguage(language) {
+    return listGlobalVocabByKind('global-known', language);
+}
+
+/**
+ * Upsert a global-known entry.
+ * @param {Object} item
+ * @returns {Promise<Object>}
+ */
+export async function upsertGlobalKnownItem(item) {
+    return upsertGlobalVocabItem({ ...item, kind: 'global-known' });
+}
+
+/**
+ * Upsert global-known entries in a single transaction.
+ * @param {Array<Object>} items
+ * @param {{skipRemote?: boolean}} [options]
+ * @returns {Promise<Array<Object>>}
+ */
+export async function upsertGlobalKnownItems(items, options = {}) {
+    const normalized = Array.isArray(items) ? items.map((item) => ({ ...item, kind: 'global-known' })) : [];
+    return upsertGlobalVocabItems(normalized, options);
+}
+
+/**
+ * Delete a global-known entry.
+ * @param {string} idOrWord
+ * @param {string|null} [language]
+ * @returns {Promise<boolean>}
+ */
+export async function deleteGlobalKnownItem(idOrWord, language = null) {
+    return deleteGlobalVocabItem(idOrWord, language, 'global-known');
+}
+
+/**
+ * Migrate book-level known words into global-known entries.
+ * @param {{dryRun?: boolean, logger?: {info?: Function, warn?: Function}}} [options]
+ * @returns {Promise<{total:number, migrated:number, skipped:number, defaulted:number, toUpsert?:number}>}
+ */
+export async function migrateBookKnownToGlobalKnown(options = {}) {
+    if (!db) {
+        throw new Error('Database not initialized');
+    }
+    const dryRun = Boolean(options?.dryRun);
+    const logger = options?.logger || console;
+    const nowIso = new Date().toISOString();
+
+    const [knownEntries, books] = await Promise.all([
+        listVocabularyByStatus('known'),
+        getAllBooks()
+    ]);
+
+    const bookLanguageById = new Map();
+    for (const book of books || []) {
+        const language = typeof book?.language === 'string' ? book.language.trim() : '';
+        if (book?.id && language) bookLanguageById.set(book.id, language);
+    }
+
+    /** @type {Array<any>} */
+    const updates = [];
+    let skipped = 0;
+    let defaulted = 0;
+
+    for (const entry of knownEntries || []) {
+        const normalizedWord = normalizeWord(entry?.word || '');
+        if (!normalizedWord) continue;
+
+        let language = typeof entry?.language === 'string' ? entry.language.trim() : '';
+        if (!language && entry?.bookId) {
+            language = bookLanguageById.get(entry.bookId) || '';
+        }
+        if (!language) {
+            language = 'en';
+            defaulted += 1;
+            logger?.warn?.('Missing language for known word; defaulting to en.', { word: normalizedWord, bookId: entry?.bookId });
+        }
+
+        const existing = await getGlobalVocabItem(normalizedWord, language);
+        if (existing?.kind === 'global' && existing?.status === 'learning') {
+            skipped += 1;
+            continue;
+        }
+
+        const sourceBooks = new Set(Array.isArray(existing?.sourceBooks) ? existing.sourceBooks : []);
+        if (entry?.bookId) sourceBooks.add(entry.bookId);
+
+        const encounterCount = Math.max(
+            typeof existing?.encounterCount === 'number' ? existing.encounterCount : 0,
+            2
+        );
+
+        updates.push({
+            ...(existing || {}),
+            id: makeGlobalVocabId(language, normalizedWord),
+            kind: 'global-known',
+            language,
+            normalizedWord,
+            displayWord: existing?.displayWord || entry?.displayWord || normalizedWord,
+            status: 'known',
+            encounterCount,
+            lastEncounteredAt: existing?.lastEncounteredAt || entry?.updatedAt || nowIso,
+            sourceBooks: Array.from(sourceBooks),
+            createdAt: existing?.createdAt || entry?.createdAt || nowIso,
+            updatedAt: nowIso
+        });
+    }
+
+    if (dryRun) {
+        logger?.info?.('Global-known migration dry run complete.', {
+            total: (knownEntries || []).length,
+            toUpsert: updates.length,
+            skipped,
+            defaulted
+        });
+        return { total: (knownEntries || []).length, toUpsert: updates.length, skipped, defaulted, migrated: 0 };
+    }
+
+    const records = await upsertGlobalKnownItems(updates);
+    logger?.info?.('Global-known migration complete.', {
+        total: (knownEntries || []).length,
+        migrated: records.length,
+        skipped,
+        defaulted
+    });
+    return { total: (knownEntries || []).length, migrated: records.length, skipped, defaulted };
+}
+
+/**
  * Upsert a global vocabulary item (keyed by language + normalized word).
  * @param {Object} item
  * @returns {Promise<Object>}
@@ -606,6 +951,7 @@ export async function upsertGlobalVocabItem(item) {
         const parsed = parseGlobalVocabId(item?.id);
         const language = (typeof item?.language === 'string' ? item.language.trim() : '') || parsed.language || '';
         const normalizedWord = normalizeWord(item?.normalizedWord || item?.word || parsed.normalizedWord || item?.id || '');
+        const kind = typeof item?.kind === 'string' && item.kind.trim() ? item.kind.trim() : 'global';
         if (!normalizedWord) {
             reject(new Error('Invalid global vocabulary item'));
             return;
@@ -620,6 +966,7 @@ export async function upsertGlobalVocabItem(item) {
         const record = {
             ...rest,
             id,
+            kind,
             language: language || item?.language || null,
             normalizedWord,
             updatedAt,
@@ -644,12 +991,85 @@ export async function upsertGlobalVocabItem(item) {
 }
 
 /**
+ * Upsert many global vocabulary items in a single transaction.
+ * @param {Array<Object>} items
+ * @param {{skipRemote?: boolean}} [options]
+ * @returns {Promise<Array<Object>>}
+ */
+export async function upsertGlobalVocabItems(items, options = {}) {
+    return new Promise((resolve, reject) => {
+        if (!db) {
+            reject(new Error('Database not initialized'));
+            return;
+        }
+        if (!Array.isArray(items) || items.length === 0) {
+            resolve([]);
+            return;
+        }
+
+        const now = new Date().toISOString();
+        /** @type {Array<Object>} */
+        const records = [];
+
+        for (const item of items) {
+            const parsed = parseGlobalVocabId(item?.id);
+            const language = (typeof item?.language === 'string' ? item.language.trim() : '') || parsed.language || '';
+            const normalizedWord = normalizeWord(item?.normalizedWord || item?.word || parsed.normalizedWord || item?.id || '');
+            const kind = typeof item?.kind === 'string' && item.kind.trim() ? item.kind.trim() : 'global';
+            if (!normalizedWord) continue;
+            const updatedAt = typeof item.updatedAt === 'string' && item.updatedAt ? item.updatedAt : now;
+            const createdAt = typeof item.createdAt === 'string' && item.createdAt ? item.createdAt : updatedAt;
+            const id = language ? makeGlobalVocabId(language, normalizedWord) : normalizedWord;
+            const { _skipRemote, ...rest } = item || {};
+            records.push({
+                ...rest,
+                id,
+                kind,
+                language: language || item?.language || null,
+                normalizedWord,
+                updatedAt,
+                createdAt
+            });
+        }
+
+        if (records.length === 0) {
+            resolve([]);
+            return;
+        }
+
+        const transaction = db.transaction([STORE_GLOBAL_VOCAB], 'readwrite');
+        const store = transaction.objectStore(STORE_GLOBAL_VOCAB);
+        transaction.oncomplete = () => {
+            if (options?.skipRemote) {
+                resolve(records);
+                return;
+            }
+            queueMicrotask(() => {
+                import('./supabase/global-vocab-repo.js')
+                    .then((mod) => mod.upsertGlobalVocabRemoteItems(records))
+                    .then(() => resolve(records))
+                    .catch((error) => {
+                        console.warn('Global vocab remote upsert failed:', error);
+                        resolve(records);
+                    });
+            });
+        };
+        transaction.onerror = () => reject(transaction.error || new Error('Failed to upsert global vocabulary items'));
+        transaction.onabort = () => reject(transaction.error || new Error('Failed to upsert global vocabulary items'));
+
+        for (const record of records) {
+            store.put(record);
+        }
+    });
+}
+
+/**
  * Delete a global vocabulary item.
  * @param {string} idOrWord
  * @param {string|null} [language]
  * @returns {Promise<boolean>}
  */
-export async function deleteGlobalVocabItem(idOrWord, language = null) {
+export async function deleteGlobalVocabItem(idOrWord, language = null, kind = 'global') {
     return new Promise((resolve, reject) => {
         if (!db) {
             reject(new Error('Database not initialized'));
@@ -666,7 +1086,7 @@ export async function deleteGlobalVocabItem(idOrWord, language = null) {
         request.onsuccess = () => {
             queueMicrotask(() => {
                 import('./supabase/global-vocab-repo.js')
-                    .then((mod) => mod.deleteGlobalVocabRemote(key))
+                    .then((mod) => mod.deleteGlobalVocabRemote(key, kind))
                     .catch((error) => console.warn('Global vocab remote delete failed:', error));
             });
             resolve(true);

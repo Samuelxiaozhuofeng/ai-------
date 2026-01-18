@@ -1,7 +1,7 @@
 import { ModalManager } from '../../ui/modal-manager.js';
 import { showNotification } from '../../ui/notifications.js';
 import { hideLoading, showLoading } from '../../ui/loading.js';
-import { saveLayout, SUPPORTED_LANGUAGES } from '../../storage.js';
+import { isGlobalKnownEnabled, saveLayout, SUPPORTED_LANGUAGES } from '../../storage.js';
 import { getBook, makeGlobalVocabId } from '../../db.js';
 import { getLanguageFilter } from '../../core/language-filter.js';
 import { globalVocabByWord, refreshGlobalVocabCache } from '../../core/global-vocab-cache.js';
@@ -73,10 +73,21 @@ export function createReaderController(elements) {
   }
 
   function getEffectiveWordStatus(normalizedWord) {
-    const local = state.vocabularyByWord.get(normalizedWord)?.status || null;
-    if (local) return local;
-    const global = getGlobalVocabEntryForWord(normalizedWord, getCurrentBookLanguage());
-    if (global?.status === 'learning') return WORD_STATUSES.LEARNING;
+    const localEntry = state.vocabularyByWord.get(normalizedWord) || null;
+    const localStatus = localEntry?.status || null;
+    const globalEntry = getGlobalVocabEntryForWord(normalizedWord, getCurrentBookLanguage());
+    const globalKnownEnabled = isGlobalKnownEnabled();
+
+    // Priority: local learning override -> global known -> local seen/known -> global learning -> global seen -> new.
+    if (localStatus === WORD_STATUSES.LEARNING) return WORD_STATUSES.LEARNING;
+    if (globalKnownEnabled && globalEntry?.kind === 'global-known' && globalEntry?.status === WORD_STATUSES.KNOWN) {
+      return WORD_STATUSES.KNOWN;
+    }
+    if (localStatus) return localStatus;
+    if (globalEntry?.status === WORD_STATUSES.LEARNING) return WORD_STATUSES.LEARNING;
+    if (globalKnownEnabled && globalEntry?.kind === 'global-known' && globalEntry?.status === WORD_STATUSES.SEEN) {
+      return WORD_STATUSES.SEEN;
+    }
     return WORD_STATUSES.NEW;
   }
 

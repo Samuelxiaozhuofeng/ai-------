@@ -57,6 +57,7 @@ uvicorn main:app --reload --port 8000
 - `new`: default for words not saved; shown with blue dotted underline
 - `learning`: saved for study; shown with yellow highlight
 - `known`: marked as mastered; shown as normal text
+- Known words are shared across books of the same language.
 
 Click a word in the reader to open it in the Vocabulary panel, then use:
 - `加入学习` → `learning`

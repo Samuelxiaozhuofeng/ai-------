@@ -20,11 +20,12 @@ export function mapLocalGlobalVocabToRow(userId, item) {
   const language = typeof item?.language === 'string' ? item.language.trim() : '';
   const normalizedWord = normalizeWord(item?.normalizedWord || item?.word || '');
   const id = String(item?.id || '').trim();
+  const kind = typeof item?.kind === 'string' ? item.kind.trim() : 'global';
 
   return {
     user_id: userId,
     id: id || (language && normalizedWord ? `${language}:${normalizedWord}` : normalizedWord),
-    kind: 'global',
+    kind: kind || 'global',
     book_id: null,
     language: language || null,
     word: normalizedWord || null,
@@ -36,6 +37,9 @@ export function mapLocalGlobalVocabToRow(userId, item) {
     usage: item?.usage || null,
     contextual_meaning: item?.contextualMeaning || null,
     context_sentence: item?.contextSentence || null,
+
+    encounter_count: asInt(item?.encounterCount),
+    last_encountered_at: toIso(item?.lastEncounteredAt),
 
     due: toIso(item?.due),
     stability: asNumber(item?.stability),
@@ -54,10 +58,15 @@ export function mapLocalGlobalVocabToRow(userId, item) {
 
 export function mapRowToLocalGlobalVocab(row) {
   const language = typeof row?.language === 'string' ? row.language.trim() : '';
-  const normalizedWord = normalizeWord(row?.word || row?.normalized_word || row?.id || '');
+  const idRaw = typeof row?.id === 'string' ? row.id.trim() : '';
+  const idMatch = idRaw.match(/^([a-z]{2}):(.+)$/i);
+  const idLanguage = idMatch ? idMatch[1].toLowerCase() : '';
+  const idWord = idMatch ? idMatch[2] : '';
+  const normalizedWord = normalizeWord(row?.word || row?.normalized_word || idWord || idRaw || '');
   return {
     id: row.id,
-    language: language || null,
+    kind: row.kind || 'global',
+    language: language || idLanguage || null,
     normalizedWord,
     displayWord: row.display_word || null,
     lemma: row.lemma || null,
@@ -67,6 +76,8 @@ export function mapRowToLocalGlobalVocab(row) {
     usage: row.usage || null,
     contextualMeaning: row.contextual_meaning || null,
     contextSentence: row.context_sentence || null,
+    encounterCount: typeof row.encounter_count === 'number' ? row.encounter_count : Number(row.encounter_count || 0),
+    lastEncounteredAt: row.last_encountered_at || null,
 
     due: row.due || null,
     stability: typeof row.stability === 'number' ? row.stability : Number(row.stability || 0),
@@ -98,6 +109,22 @@ export async function listGlobalVocabRemote() {
   return (data || []).map(mapRowToLocalGlobalVocab);
 }
 
+export async function listGlobalVocabRemoteByKind(kind = 'global') {
+  const ctx = await getCloudContext();
+  if (!ctx || !isOnline()) return [];
+  const targetKind = typeof kind === 'string' && kind.trim() ? kind.trim() : 'global';
+
+  const { data, error } = await ctx.supabase
+    .from('vocabulary')
+    .select('*')
+    .eq('user_id', ctx.user.id)
+    .eq('kind', targetKind)
+    .order('updated_at', { ascending: true });
+
+  if (error) throw error;
+  return (data || []).map(mapRowToLocalGlobalVocab);
+}
+
 export async function upsertGlobalVocabRemote(item) {
   const ctx = await getCloudContext();
   if (!ctx) return null;
@@ -107,16 +134,27 @@ export async function upsertGlobalVocabRemote(item) {
   return row;
 }
 
-export async function deleteGlobalVocabRemote(id) {
+export async function upsertGlobalVocabRemoteItems(items) {
+  const ctx = await getCloudContext();
+  if (!ctx) return [];
+  const rows = Array.isArray(items) ? items.map((item) => mapLocalGlobalVocabToRow(ctx.user.id, item)) : [];
+  if (rows.length === 0) return [];
+  const { error } = await ctx.supabase.from('vocabulary').upsert(rows, { onConflict: 'user_id,id' });
+  if (error) throw error;
+  return rows;
+}
+
+export async function deleteGlobalVocabRemote(id, kind = 'global') {
   const ctx = await getCloudContext();
   if (!ctx) return false;
   const key = String(id || '').trim();
   if (!key) return true;
+  const targetKind = typeof kind === 'string' && kind.trim() ? kind.trim() : 'global';
   const { error } = await ctx.supabase
     .from('vocabulary')
     .delete()
     .eq('user_id', ctx.user.id)
-    .eq('kind', 'global')
+    .eq('kind', targetKind)
     .eq('id', key);
   if (error) throw error;
   return true;

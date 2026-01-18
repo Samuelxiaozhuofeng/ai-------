@@ -248,7 +248,7 @@ create table if not exists public.vocabulary (
   user_id uuid not null references auth.users (id) on delete cascade,
   id text not null,
 
-  -- 'book' for per-book word status; 'global' for FSRS card state
+  -- 'book' for per-book word status; 'global' for FSRS card state; 'global-known' for cross-book known tracking
   kind text not null,
   book_id text null,
   language text null,
@@ -268,6 +268,10 @@ create table if not exists public.vocabulary (
   contextual_meaning text null,
   context_sentence text null,
 
+  -- Global known fields
+  encounter_count integer null,
+  last_encountered_at timestamptz null,
+
   due timestamptz null,
   stability double precision null,
   difficulty double precision null,
@@ -283,16 +287,17 @@ create table if not exists public.vocabulary (
 
   primary key (user_id, id),
 
-  constraint vocabulary_kind_check check (kind in ('book', 'global')),
+  constraint vocabulary_kind_check check (kind in ('book', 'global', 'global-known')),
   constraint vocabulary_book_fields_check check (
     (kind = 'book' and book_id is not null and word is not null)
     or
-    (kind = 'global' and book_id is null and word is not null)
+    (kind in ('global', 'global-known') and book_id is null and word is not null)
   )
 );
 
 create index if not exists vocabulary_user_kind_updated_idx on public.vocabulary (user_id, kind, updated_at desc);
 create index if not exists vocabulary_user_book_idx on public.vocabulary (user_id, kind, book_id);
+create index if not exists vocabulary_user_kind_language_idx on public.vocabulary (user_id, kind, language);
 
 -- ============================================
 -- Row Level Security (RLS)
