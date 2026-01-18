@@ -183,6 +183,7 @@
   padding: var(--spacing-2xl) var(--spacing-2xl) var(--spacing-3xl);
   height: 100%;
   box-sizing: border-box;
+  overflow: hidden;
 }
 
 .reader-view.page-mode .reading-content p,
