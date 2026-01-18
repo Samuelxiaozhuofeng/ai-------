@@ -214,6 +214,11 @@
   transition: width 0.3s ease, opacity 0.3s ease;
 }
 
+.reader-view.zen-mode .vocab-panel .panel-tabs,
+.reader-view.zen-mode .vocab-panel .auto-study-toggle {
+  display: none;
+}
+
 .reading-content {
   flex: 1;
   overflow-y: auto;
@@ -965,6 +970,10 @@ input[type="range"] {
    Zen Mode Margin Note (Desktop)
    ============================================ */
 @media (min-width: 769px) {
+  .reader-view.zen-mode .reading-content {
+    padding-right: 400px;
+  }
+
   .reader-view.zen-mode .vocab-panel {
     position: fixed;
     left: var(--vocab-note-left, calc(50% + 380px));

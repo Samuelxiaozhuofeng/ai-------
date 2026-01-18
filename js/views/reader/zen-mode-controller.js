@@ -142,21 +142,8 @@ export function createZenModeController(elements) {
 
   function handleMouseMove(event) {
     if (!zenModeActive || !isReaderVisible()) return;
-    const viewportHeight = window.innerHeight || 0;
-    if (!viewportHeight) return;
-    const y = event.clientY;
-    
-    // If sidebar is visible, keep UI revealed? Or maybe just let sidebar be independent.
-    // Actually, if sidebar is visible, we might want to suppress auto-hide of the header/footer 
-    // to avoid jarring effects, OR just let them hide independently.
-    // Let's stick to mouse edge detection.
-    
-    if (y <= EDGE_THRESHOLD_PX || y >= viewportHeight - EDGE_THRESHOLD_PX) {
-      clearHideTimer();
-      revealUi();
-      return;
-    }
-    scheduleHide();
+    // Mouse edge detection is disabled in Zen mode for full immersion.
+    return;
   }
 
   function enterZenMode() {
