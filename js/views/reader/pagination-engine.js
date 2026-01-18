@@ -38,8 +38,20 @@ export function createPaginationEngine({
       document.body.appendChild(paginationMeasure);
     }
 
-    paginationMeasure.style.width = `${elements.readingContent.clientWidth}px`;
+    const source = elements.readingContent;
+    const computed = window.getComputedStyle(source);
+
+    paginationMeasure.style.width = `${source.clientWidth}px`;
     paginationMeasure.style.height = `${heightPx}px`;
+    paginationMeasure.style.padding = computed.padding;
+    paginationMeasure.style.boxSizing = computed.boxSizing;
+    paginationMeasure.style.fontFamily = computed.fontFamily;
+    paginationMeasure.style.fontSize = computed.fontSize;
+    paginationMeasure.style.lineHeight = computed.lineHeight;
+    paginationMeasure.style.letterSpacing = computed.letterSpacing;
+    paginationMeasure.style.wordSpacing = computed.wordSpacing;
+    paginationMeasure.style.fontWeight = computed.fontWeight;
+    paginationMeasure.style.fontStyle = computed.fontStyle;
     paginationMeasure.innerHTML = '';
     return paginationMeasure;
   }
@@ -90,33 +102,38 @@ export function createPaginationEngine({
 
       if (measure.scrollHeight > pageHeightPx) {
         pageWrapper.removeChild(clone);
-
-        if (pageWrapper.childNodes.length > 0) {
-          pages.push(pageWrapper.innerHTML);
-          pageStartCharOffsets.push(currentPageStartOffset);
-          pageWrapper.innerHTML = '';
-          currentPageStartOffset = paragraphOffsetCursor;
-        }
-
-        pageWrapper.appendChild(clone);
-        if (measure.scrollHeight > pageHeightPx) {
-          pageWrapper.removeChild(clone);
-          splitOversizeParagraphIntoPages(
+        if (paragraph.tagName === 'P') {
+          currentPageStartOffset = splitParagraphIntoPages(
             paragraph,
             measure,
             pageWrapper,
             pageHeightPx,
             pages,
             pageStartCharOffsets,
-            paragraphOffsetCursor
+            paragraphOffsetCursor,
+            currentPageStartOffset
           );
-          paragraphOffsetCursor += paragraphTextLen + sepLen;
-          currentPageStartOffset = paragraphOffsetCursor;
-          continue;
+        } else {
+          if (pageWrapper.childNodes.length > 0) {
+            pages.push(pageWrapper.innerHTML);
+            pageStartCharOffsets.push(currentPageStartOffset);
+            pageWrapper.innerHTML = '';
+            currentPageStartOffset = paragraphOffsetCursor;
+          }
+
+          pageWrapper.appendChild(clone);
+          if (measure.scrollHeight > pageHeightPx) {
+            pages.push(pageWrapper.innerHTML);
+            pageStartCharOffsets.push(currentPageStartOffset);
+            pageWrapper.innerHTML = '';
+          }
         }
       }
 
       paragraphOffsetCursor += paragraphTextLen + sepLen;
+      if (pageWrapper.childNodes.length === 0) {
+        currentPageStartOffset = paragraphOffsetCursor;
+      }
     }
 
     if (pageWrapper.childNodes.length > 0) {
@@ -129,8 +146,36 @@ export function createPaginationEngine({
     return { pages: safePages, pageStartCharOffsets: safeOffsets };
   }
 
-  function splitOversizeParagraphIntoPages(paragraph, measure, pageWrapper, pageHeightPx, pages, pageStartCharOffsets, paragraphStartOffset) {
+  function splitParagraphIntoPages(
+    paragraph,
+    measure,
+    pageWrapper,
+    pageHeightPx,
+    pages,
+    pageStartCharOffsets,
+    paragraphStartOffset,
+    currentPageStartOffset
+  ) {
     const tokens = Array.from(paragraph.childNodes);
+    if (tokens.length === 0) {
+      if (pageWrapper.childNodes.length > 0) {
+        pages.push(pageWrapper.innerHTML);
+        pageStartCharOffsets.push(currentPageStartOffset);
+        pageWrapper.innerHTML = '';
+        currentPageStartOffset = paragraphStartOffset;
+      }
+
+      const clone = paragraph.cloneNode(true);
+      pageWrapper.appendChild(clone);
+      if (measure.scrollHeight > pageHeightPx) {
+        pages.push(pageWrapper.innerHTML);
+        pageStartCharOffsets.push(currentPageStartOffset);
+        pageWrapper.innerHTML = '';
+      }
+
+      return currentPageStartOffset;
+    }
+
     const tokenPrefix = [0];
     for (const token of tokens) {
       const len = (token?.textContent || '').length;
@@ -139,8 +184,17 @@ export function createPaginationEngine({
     let start = 0;
 
     while (start < tokens.length) {
-      const maxEnd = findMaxFittingTokenEnd(tokens, start, measure, pageWrapper, pageHeightPx);
-      const end = Math.max(start + 1, maxEnd);
+      let end = findMaxFittingTokenEnd(tokens, start, measure, pageWrapper, pageHeightPx);
+      if (end <= start) {
+        if (pageWrapper.childNodes.length > 0) {
+          pages.push(pageWrapper.innerHTML);
+          pageStartCharOffsets.push(currentPageStartOffset);
+          pageWrapper.innerHTML = '';
+          currentPageStartOffset = paragraphStartOffset + tokenPrefix[start];
+          continue;
+        }
+        end = start + 1;
+      }
 
       const piece = document.createElement('p');
       for (let i = start; i < end; i++) {
@@ -148,11 +202,17 @@ export function createPaginationEngine({
       }
       pageWrapper.appendChild(piece);
 
-      pages.push(pageWrapper.innerHTML);
-      pageStartCharOffsets.push(paragraphStartOffset + tokenPrefix[start]);
-      pageWrapper.innerHTML = '';
+      if (end < tokens.length) {
+        pages.push(pageWrapper.innerHTML);
+        pageStartCharOffsets.push(currentPageStartOffset);
+        pageWrapper.innerHTML = '';
+        currentPageStartOffset = paragraphStartOffset + tokenPrefix[end];
+      }
+
       start = end;
     }
+
+    return currentPageStartOffset;
   }
 
   function findMaxFittingTokenEnd(tokens, start, measure, pageWrapper, pageHeightPx) {
