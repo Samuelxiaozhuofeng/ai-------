@@ -991,10 +991,10 @@ input[type="range"] {
     box-shadow: 0 4px 24px rgba(0, 0, 0, 0.08);
     
     /* Hidden state */
-    transform: translateX(20px);
+    transform: translateY(10px);
     opacity: 0;
     pointer-events: none;
-    transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+    transition: opacity 0.25s ease-out, transform 0.25s ease-out;
     will-change: transform, opacity;
     
     /* Ensure flex layout is preserved even if collapsed class is present */
@@ -1004,7 +1004,7 @@ input[type="range"] {
 
   /* When specifically visible in Zen Mode */
   .reader-view.zen-mode .vocab-panel.zen-sidebar-visible {
-    transform: translateX(0);
+    transform: translateY(0);
     opacity: 1;
     pointer-events: auto;
     
@@ -1032,6 +1032,34 @@ input[type="range"] {
     box-shadow: 0 4px 24px rgba(0, 0, 0, 0.3);
   }
 
+  [data-theme="dark"] .reader-view.zen-mode .vocab-card {
+    background: rgba(44, 44, 46, 0.7);
+    box-shadow: -8px 0 30px rgba(0, 0, 0, 0.25);
+  }
+
+  [data-theme="dark"] .reader-view.zen-mode .vocab-card:hover {
+    box-shadow: -8px 0 30px rgba(0, 0, 0, 0.25);
+  }
+
+  [data-theme="dark"] .reader-view.zen-mode .vocab-card-label {
+    color: rgba(255, 255, 255, 0.3);
+  }
+
+  [data-theme="dark"] .reader-view.zen-mode .skeleton-line {
+    background: linear-gradient(
+      90deg,
+      rgba(255, 255, 255, 0.06) 0%,
+      rgba(255, 255, 255, 0.12) 50%,
+      rgba(255, 255, 255, 0.06) 100%
+    );
+  }
+
+  @supports ((-webkit-backdrop-filter: blur(8px)) or (backdrop-filter: blur(8px))) {
+    [data-theme="dark"] .reader-view.zen-mode .vocab-card {
+      background: rgba(44, 44, 46, 0.6);
+    }
+  }
+
   [data-theme="dark"] .reader-view.zen-mode .vocab-panel.zen-sidebar-visible::before {
     filter: drop-shadow(-2px 0 4px rgba(0, 0, 0, 0.3));
   }
@@ -1044,6 +1072,80 @@ input[type="range"] {
 
   .reader-view.zen-mode .vocab-panel .tab-content {
     min-height: 0;
+  }
+
+  .reader-view.zen-mode .vocab-selected-header {
+    display: none;
+  }
+
+  .reader-view.zen-mode .analysis-content-body {
+    padding: 20px 24px 28px;
+  }
+
+  .reader-view.zen-mode .vocab-card {
+    background: rgba(255, 255, 255, 0.7);
+    border: none;
+    box-shadow: -8px 0 30px rgba(0, 0, 0, 0.08);
+    padding: 24px;
+    margin-bottom: 20px;
+  }
+
+  .reader-view.zen-mode .vocab-card:hover {
+    transform: none;
+    box-shadow: -8px 0 30px rgba(0, 0, 0, 0.08);
+  }
+
+  .reader-view.zen-mode .vocab-card-header {
+    border-bottom: none;
+    margin-bottom: 12px;
+    padding-bottom: 0;
+  }
+
+  .reader-view.zen-mode .vocab-card-word {
+    font-size: 1.4rem;
+  }
+
+  .reader-view.zen-mode .vocab-card-pos {
+    font-size: 0.75rem;
+    letter-spacing: 0.05em;
+    color: var(--text-tertiary);
+  }
+
+  .reader-view.zen-mode .vocab-card-row {
+    margin-bottom: 12px;
+  }
+
+  .reader-view.zen-mode .vocab-card-label {
+    color: rgba(0, 0, 0, 0.25);
+    letter-spacing: 0.05em;
+  }
+
+  .reader-view.zen-mode .vocab-card-value {
+    font-size: 1rem;
+    line-height: 1.6;
+    color: var(--text-secondary);
+  }
+
+  .reader-view.zen-mode .skeleton-line {
+    background: linear-gradient(
+      90deg,
+      rgba(0, 0, 0, 0.04) 0%,
+      rgba(0, 0, 0, 0.08) 50%,
+      rgba(0, 0, 0, 0.04) 100%
+    );
+    animation-duration: 1.6s;
+  }
+
+  .reader-view.zen-mode .empty-state {
+    color: var(--text-tertiary);
+  }
+
+  @supports ((-webkit-backdrop-filter: blur(8px)) or (backdrop-filter: blur(8px))) {
+    .reader-view.zen-mode .vocab-card {
+      background: rgba(255, 255, 255, 0.6);
+      -webkit-backdrop-filter: blur(8px);
+      backdrop-filter: blur(8px);
+    }
   }
 
   .reader-view.zen-mode.zen-note-fallback .vocab-panel {
