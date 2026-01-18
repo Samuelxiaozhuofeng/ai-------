@@ -36,23 +36,15 @@
             </button>
           </div>
           <button class="known-words-card" id="knownWordsCard" title="已掌握词汇" type="button">
-            <div class="known-words-card-header">
-              <span class="icon">📚</span>
-              <div class="known-words-card-title">
-                <span class="known-words-card-label">已掌握词汇</span>
-                <span class="known-words-card-language" id="knownWordsLanguageLabel">—</span>
-              </div>
-            </div>
-            <div class="known-words-card-stats">
-              <div class="known-words-card-stat">
-                <span class="stat-label">总数</span>
-                <span class="stat-value" id="knownWordsTotal">—</span>
-              </div>
-              <div class="known-words-card-stat">
-                <span class="stat-label">今日</span>
-                <span class="stat-value stat-today" id="knownWordsToday">—</span>
-              </div>
-            </div>
+            <span class="icon">📚</span>
+            <span class="known-words-compact">
+              <span class="known-words-label">已掌握:</span>
+              <span id="knownWordsTotal">—</span>
+              <span class="known-words-today">
+                <span class="stat-label">| 今日</span>
+                <span id="knownWordsToday">—</span>
+              </span>
+            </span>
           </button>
           <button class="btn btn-secondary" id="vocabLibraryBtn" title="词汇库">
             <span class="icon">📝</span> 词汇库

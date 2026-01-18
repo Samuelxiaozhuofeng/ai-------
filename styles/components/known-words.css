@@ -3,27 +3,28 @@
    ============================================ */
 
 .known-words-card {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
   padding: 8px 12px;
   border-radius: var(--radius-md);
   border: 1px solid var(--border-default);
-  background: linear-gradient(135deg, var(--bg-tertiary), var(--bg-secondary));
+  background: var(--bg-secondary);
   box-shadow: var(--shadow-sm);
   cursor: pointer;
-  min-width: 170px;
   font: inherit;
   color: inherit;
   text-align: left;
   appearance: none;
-  transition: transform var(--transition-fast), box-shadow var(--transition-fast), border-color var(--transition-fast);
+  white-space: nowrap;
+  transition: transform var(--transition-fast), box-shadow var(--transition-fast), border-color var(--transition-fast), background var(--transition-fast);
 }
 
 .known-words-card:hover {
-  transform: translateY(-2px);
+  transform: translateY(-1px);
   box-shadow: var(--shadow-md);
   border-color: var(--border-hover);
+  background: var(--bg-tertiary);
 }
 
 .known-words-card:focus-visible {
@@ -35,60 +36,31 @@
   opacity: 0.7;
 }
 
-.known-words-card-header {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  color: var(--text-primary);
-}
-
-.known-words-card-title {
-  display: flex;
+.known-words-compact {
+  display: inline-flex;
   align-items: center;
   gap: 6px;
   font-size: var(--font-size-sm);
-  font-weight: 600;
-}
-
-.known-words-card-label {
-  letter-spacing: -0.01em;
-}
-
-.known-words-card-language {
-  font-size: var(--font-size-xs);
-  color: var(--text-secondary);
-  background: var(--bg-tertiary);
-  border: 1px solid var(--border-subtle);
-  padding: 2px 6px;
-  border-radius: 999px;
-}
-
-.known-words-card-stats {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: var(--spacing-sm);
-}
-
-.known-words-card-stat {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-
-.known-words-card-stat .stat-label {
-  font-size: var(--font-size-xs);
-  color: var(--text-muted);
-}
-
-.known-words-card-stat .stat-value {
-  font-size: var(--font-size-lg);
   font-weight: 600;
   color: var(--text-primary);
   font-variant-numeric: tabular-nums;
 }
 
-.known-words-card-stat .stat-value.stat-today {
+.known-words-label {
+  color: var(--text-secondary);
+  font-weight: 500;
+}
+
+.known-words-today {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
   color: var(--accent-success);
+}
+
+.known-words-today .stat-label {
+  color: var(--text-secondary);
+  font-weight: 500;
 }
 
 /* Modal */
@@ -282,24 +254,29 @@
   color: var(--text-secondary);
 }
 
-@media (max-width: 768px) {
-  .known-words-card {
-    min-width: 130px;
-    padding: 6px 8px;
-    gap: 4px;
-  }
-
-  .known-words-card-label {
+@media (max-width: 1024px) {
+  .known-words-label {
     display: none;
   }
 
-  .known-words-card-language {
-    font-size: 10px;
-    padding: 1px 6px;
+  .known-words-today .stat-label {
+    display: none;
   }
 
-  .known-words-card-stat .stat-value {
-    font-size: var(--font-size-base);
+  .known-words-today::before {
+    content: "(";
+    color: var(--text-secondary);
+  }
+
+  .known-words-today::after {
+    content: ")";
+    color: var(--text-secondary);
+  }
+}
+
+@media (max-width: 768px) {
+  .known-words-card {
+    display: none;
   }
 
   .known-words-modal {
