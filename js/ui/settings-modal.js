@@ -111,39 +111,12 @@ export function createSettingsModalController(elements) {
     readingDirty = false;
   }
 
-	  function updateSyncUI(syncStatus) {
-	    const state = syncStatus?.state || 'offline';
-	    const lastSyncAt = syncStatus?.lastSyncAt || null;
-	    const error = syncStatus?.error || null;
-
-    let label = 'Offline';
-	    if (state === 'syncing') label = 'Syncing…';
-	    if (state === 'synced') label = lastSyncAt ? 'Synced' : 'Synced';
-
-	    const indicators = [elements.syncIndicator, elements.syncIndicatorShelf].filter(Boolean);
-	    indicators.forEach((el) => {
-	      el.dataset.state = state;
-	      el.title = error ? `Sync error: ${error}` : `Sync status: ${label}`;
-	      const labelEl = el.querySelector?.('.sync-label') || el.querySelector?.('.mobile-hide');
-	      if (labelEl) {
-	        labelEl.textContent = label;
-	      } else {
-	        el.textContent = label;
-	      }
-	    });
-	    if (elements.syncStatusText) {
-	      elements.syncStatusText.textContent = error ? `Offline (${error})` : label;
-	    }
-	  }
-
-  function loadSettingsToForm(getSyncStatus) {
+  function loadSettingsToForm() {
     const settings = getSettings();
     elements.apiUrl.value = settings.apiUrl || '';
     elements.apiKey.value = settings.apiKey || '';
     elements.languageSelect.value = settings.language || '中文';
     elements.readingLevelSelect.value = settings.readingLevel || 'intermediate';
-    elements.backendUrl.value = settings.backendUrl || '';
-    elements.syncEnabledToggle.checked = !!settings.syncEnabled;
 
     const fsrsSettings = getFsrsSettings();
     const reviewMode = fsrsSettings?.reviewMode === 'mixed' ? 'mixed' : 'grouped';
@@ -174,11 +147,10 @@ export function createSettingsModalController(elements) {
     }
 
     loadReadingSettingsToForm();
-    updateSyncUI(getSyncStatus());
   }
 
-  function open(getSyncStatus) {
-    loadSettingsToForm(getSyncStatus);
+  function open() {
+    loadSettingsToForm();
     settingsModalManager.open();
   }
 
@@ -220,12 +192,10 @@ export function createSettingsModalController(elements) {
     const readingRefs = getReadingDomRefs();
     elements.settingsTabAI.classList.toggle('active', tabName === 'ai');
     readingRefs.tab?.classList.toggle('active', tabName === 'reading');
-    elements.settingsTabSync.classList.toggle('active', tabName === 'sync');
     elements.settingsTabFSRS?.classList.toggle('active', tabName === 'fsrs');
 
     elements.aiSettingsContent.classList.toggle('active', tabName === 'ai');
     readingRefs.content?.classList.toggle('active', tabName === 'reading');
-    elements.syncSettingsContent.classList.toggle('active', tabName === 'sync');
     elements.fsrsSettingsContent?.classList.toggle('active', tabName === 'fsrs');
   }
 
@@ -257,9 +227,7 @@ export function createSettingsModalController(elements) {
       apiKey: elements.apiKey.value.trim(),
       model: elements.modelSelect.value,
       language: elements.languageSelect.value,
-      readingLevel: elements.readingLevelSelect.value,
-      backendUrl: elements.backendUrl.value.trim(),
-      syncEnabled: !!elements.syncEnabledToggle.checked
+      readingLevel: elements.readingLevelSelect.value
     };
 
     if (!saveSettings(settings)) {
@@ -281,21 +249,21 @@ export function createSettingsModalController(elements) {
     settingsModalManager.close();
   }
 
-  function openTab(tabName, getSyncStatus) {
-    loadSettingsToForm(getSyncStatus);
+  function openTab(tabName) {
+    loadSettingsToForm();
     switchSettingsTab(tabName);
     settingsModalManager.open();
   }
 
-  function init({ getSyncStatus, onAfterSave, onSyncNow }) {
+  function init({ onAfterSave }) {
     setHooks({ onAfterSave });
 
     const isAutoStudy = getAutoStudyEnabled();
     if (elements.autoStudyToggle) elements.autoStudyToggle.checked = isAutoStudy;
     if (elements.mobileAutoStudyToggle) elements.mobileAutoStudyToggle.checked = isAutoStudy;
 
-    elements.settingsBtn.addEventListener('click', () => open(getSyncStatus));
-    elements.typographyBtn?.addEventListener('click', () => openTab('reading', getSyncStatus));
+    elements.settingsBtn.addEventListener('click', () => open());
+    elements.typographyBtn?.addEventListener('click', () => openTab('reading'));
     elements.saveSettingsBtn.addEventListener('click', handleSave);
     elements.fetchModelsBtn.addEventListener('click', handleFetchModels);
 
@@ -308,7 +276,6 @@ export function createSettingsModalController(elements) {
     elements.settingsTabAI.addEventListener('click', () => switchSettingsTab('ai'));
     const readingRefs = getReadingDomRefs();
     readingRefs.tab?.addEventListener('click', () => switchSettingsTab('reading'));
-    elements.settingsTabSync.addEventListener('click', () => switchSettingsTab('sync'));
     elements.settingsTabFSRS?.addEventListener('click', () => switchSettingsTab('fsrs'));
 
     readingRefs.fontPreset?.addEventListener('change', handleReadingInput);
@@ -326,8 +293,6 @@ export function createSettingsModalController(elements) {
       true
     );
 
-    elements.syncNowBtn.addEventListener('click', onSyncNow);
-
     elements.autoStudyToggle?.addEventListener('change', handleAutoStudyToggle);
     elements.mobileAutoStudyToggle?.addEventListener('change', handleAutoStudyToggle);
 
@@ -344,7 +309,6 @@ export function createSettingsModalController(elements) {
     open,
     openTab,
     close,
-    updateSyncUI,
     handleEscape
   };
 }

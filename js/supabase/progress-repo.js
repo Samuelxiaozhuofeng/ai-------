@@ -26,102 +26,23 @@ function mapRowToLocal(row) {
   };
 }
 
-let pendingByBook = new Map();
-let flushTimer = null;
-let flushInFlight = false;
-let retryDelayMs = 1500;
-const maxRetryDelayMs = 30_000;
-let hasOnlineListener = false;
-
-function ensureOnlineListener() {
-  if (hasOnlineListener) return;
-  if (typeof window === 'undefined') return;
-  hasOnlineListener = true;
-  window.addEventListener(
-    'online',
-    () => {
-      scheduleFlush(0);
-    },
-    { passive: true }
-  );
-}
-
-async function flushPending() {
-  flushTimer = null;
-  if (flushInFlight) return;
-  flushInFlight = true;
-  try {
-    const ctx = await getCloudContext();
-    if (!ctx) return;
-
-    const entries = Array.from(pendingByBook.entries());
-    if (entries.length === 0) {
-      retryDelayMs = 1500;
-      return;
-    }
-
-    if (!isOnline()) {
-      ensureOnlineListener();
-      scheduleFlush(retryDelayMs);
-      retryDelayMs = Math.min(retryDelayMs * 2, maxRetryDelayMs);
-      return;
-    }
-
-    const rows = entries.map(([bookId, progress]) => mapLocalToRow(ctx.user.id, bookId, progress));
-    const { error } = await ctx.supabase.from('progress').upsert(rows, { onConflict: 'user_id,book_id' });
-    if (error) {
-      console.warn('Supabase progress upsert failed:', error);
-      scheduleFlush(retryDelayMs);
-      retryDelayMs = Math.min(retryDelayMs * 2, maxRetryDelayMs);
-      return;
-    }
-
-    for (const [bookId, sentProgress] of entries) {
-      const current = pendingByBook.get(bookId);
-      if (!current) continue;
-      const currentUpdatedAt = current?.updatedAt || '';
-      const sentUpdatedAt = sentProgress?.updatedAt || '';
-      if (String(currentUpdatedAt) <= String(sentUpdatedAt)) {
-        pendingByBook.delete(bookId);
-      }
-    }
-
-    retryDelayMs = 1500;
-    if (pendingByBook.size > 0) scheduleFlush(250);
-  } finally {
-    flushInFlight = false;
-  }
-}
-
-function scheduleFlush(delayMs = 1200) {
-  if (flushTimer) return;
-  flushTimer = setTimeout(() => {
-    void flushPending();
-  }, Math.max(0, delayMs));
-}
-
-export async function flushProgressPendingNow() {
-  await flushPending();
-}
-
 export async function updatePageProgressCloud(bookId, progress) {
   const ok = await updatePageProgress(bookId, progress);
-
   const ctx = await getCloudContext();
-  if (ctx) {
-    const merged = await getReadingProgress(bookId).catch(() => null);
-    if (merged) {
-      pendingByBook.set(bookId, merged);
-      scheduleFlush();
-    }
-  }
+  if (!ctx || !isOnline()) return ok;
+
+  const merged = await getReadingProgress(bookId).catch(() => null);
+  if (!merged) return ok;
+
+  const row = mapLocalToRow(ctx.user.id, bookId, merged);
+  const { error } = await ctx.supabase.from('progress').upsert([row], { onConflict: 'user_id,book_id' });
+  if (error) console.warn('Supabase progress upsert failed:', error);
 
   return ok;
 }
 
 export async function getReadingProgressCloud(bookId) {
   const local = await getReadingProgress(bookId).catch(() => null);
-
   const ctx = await getCloudContext();
   if (!ctx || !isOnline()) return local;
 
@@ -140,29 +61,6 @@ export async function getReadingProgressCloud(bookId) {
   if (!data) return local;
 
   const remote = mapRowToLocal(data);
-  const localUpdatedAt = local?.updatedAt || '';
-  if (!localUpdatedAt || String(remote.updatedAt) > String(localUpdatedAt)) {
-    await updatePageProgress(bookId, remote);
-    return remote;
-  }
-
-  if (local && String(localUpdatedAt) > String(remote.updatedAt || '')) {
-    pendingByBook.set(bookId, local);
-    scheduleFlush();
-  }
-
-  return local;
-}
-
-export async function pullProgressUpdates({ bookId, since = null } = {}) {
-  const ctx = await getCloudContext();
-  if (!ctx || !isOnline()) return [];
-
-  let query = ctx.supabase.from('progress').select('*').eq('user_id', ctx.user.id);
-  if (bookId) query = query.eq('book_id', bookId);
-  if (since) query = query.gt('updated_at', since);
-
-  const { data, error } = await query.order('updated_at', { ascending: true });
-  if (error) throw error;
-  return (data || []).map(mapRowToLocal);
+  await updatePageProgress(bookId, remote);
+  return remote;
 }

@@ -74,8 +74,6 @@ export const elements = {
   themeToggleBtn: document.getElementById('themeToggleBtn'),
   typographyBtn: document.getElementById('typographyBtn'),
   themeIcon: document.getElementById('themeIcon'),
-  syncIndicator: document.getElementById('syncIndicator'),
-  syncIndicatorShelf: document.getElementById('syncIndicatorShelf'),
 
   // Main content
   mainContent: document.querySelector('.main-content'),
@@ -129,10 +127,6 @@ export const elements = {
   fetchModelsBtn: document.getElementById('fetchModelsBtn'),
   languageSelect: document.getElementById('languageSelect'),
   readingLevelSelect: document.getElementById('readingLevelSelect'),
-  backendUrl: document.getElementById('backendUrl'),
-  syncEnabledToggle: document.getElementById('syncEnabledToggle'),
-  syncNowBtn: document.getElementById('syncNowBtn'),
-  syncStatusText: document.getElementById('syncStatusText'),
 
   // FSRS Settings Form
   fsrsReviewModeGrouped: document.getElementById('fsrsReviewModeGrouped'),
@@ -142,10 +136,8 @@ export const elements = {
 
   // Settings Tabs
   settingsTabAI: document.getElementById('settingsTabAI'),
-  settingsTabSync: document.getElementById('settingsTabSync'),
   settingsTabFSRS: document.getElementById('settingsTabFSRS'),
   aiSettingsContent: document.getElementById('aiSettingsContent'),
-  syncSettingsContent: document.getElementById('syncSettingsContent'),
   fsrsSettingsContent: document.getElementById('fsrsSettingsContent'),
 
   // Auto Study Toggle

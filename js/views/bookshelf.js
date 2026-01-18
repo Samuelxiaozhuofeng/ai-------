@@ -19,7 +19,6 @@ import { getSessionUser } from '../supabase/session.js';
 import { listUserEPUBs, uploadEPUB } from '../supabase/epub-service.js';
 import { updateRemoteBook } from '../supabase/books-service.js';
 import { cancelBookProcessingJob, getBookProcessingJob, retryBookProcessingJob, waitForBookProcessingJob } from '../supabase/book-processing-jobs.js';
-import { autoSyncIfNeeded } from '../sync-service.js';
 
 let viewMode = 'grid'; // 'grid' | 'list'
 let booksLibrary = []; // Books metadata list
@@ -551,19 +550,6 @@ export function createBookshelfController(elements) {
     elements.emptyBookshelf.style.display = 'none';
     renderBooksTemplate(filteredBooks, viewMode);
 
-    if (!isPatchOnly) {
-      scheduleIdle(() => {
-        void autoSyncIfNeeded({ reason: 'bookshelf' })
-          .then(async () => {
-            const nextLocal = await getAllBooks().catch(() => []);
-            await applyBooksSnapshot((nextLocal || []).map((b) => ({ ...b, isCached: true })));
-            renderBookshelf({ isPatchOnly: true });
-          })
-          .catch((error) => {
-            console.warn('Background sync failed:', error);
-          });
-      });
-    }
   }
 
   async function refreshBookshelf() {

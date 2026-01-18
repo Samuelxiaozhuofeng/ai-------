@@ -4,7 +4,7 @@ A LingQ-style language learning EPUB reader:
 - Page-flip reading (←/→ to turn pages)
 - Click words to track status: `new` → `learning` → `known`
 - Optional AI word analysis
-- Optional cloud sync via Supabase (Auth + Postgres + Storage)
+- Cloud storage via Supabase (Auth + Postgres + Storage)
 - Legacy optional FastAPI + SQLite backend (deprecated)
 
 ## Run (Frontend)
@@ -47,14 +47,10 @@ pip install -r requirements.txt
 uvicorn main:app --reload --port 8000
 ```
 
-## Enable Sync (Optional)
+## Supabase Setup
 
-### Supabase (Recommended)
 - Follow `docs/SUPABASE.md`
-- In the app: click `🔐 登录` then enable sync in `⚙️ 设置 → 🔄 同步`
-
-### FastAPI (Legacy / Deprecated)
-In Reader → Settings → `同步` you can still set `Backend URL` and enable sync.
+- Sign in with `🔐 登录` to access your cloud library
 
 ## Word Status Guide
 
@@ -82,4 +78,3 @@ This is the legacy FastAPI backend (deprecated when using Supabase).
 - `DELETE /api/v1/vocabulary/{id}`
 - `GET /api/v1/progress/{book_id}`
 - `PUT /api/v1/progress/{book_id}`
-- `POST /api/v1/sync`

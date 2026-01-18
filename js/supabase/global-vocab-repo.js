@@ -1,6 +1,5 @@
 import { normalizeWord } from '../word-status.js';
 import { getCloudContext, isOnline } from './cloud-context.js';
-import { loadPendingDeletes, savePendingDeletes } from './pending-deletes.js';
 
 function toIso(value) {
   return typeof value === 'string' && value ? value : null;
@@ -84,201 +83,41 @@ export function mapRowToLocalGlobalVocab(row) {
   };
 }
 
-/** @type {Map<string, any>} */
-let pendingUpsertsById = new Map();
-/** @type {Map<string, string>} */
-let pendingDeletesById = new Map();
-let loadedDeletesForUserId = null;
-let flushTimer = null;
-let flushInFlight = false;
-let retryDelayMs = 1500;
-const maxRetryDelayMs = 30_000;
-let hasOnlineListener = false;
-
-function ensureOnlineListener() {
-  if (hasOnlineListener) return;
-  if (typeof window === 'undefined') return;
-  hasOnlineListener = true;
-  window.addEventListener(
-    'online',
-    () => {
-      scheduleFlush(0);
-    },
-    { passive: true }
-  );
-}
-
-function getDeletesStorageKey(userId) {
-  return `language-reader-supabase-pending-deletes:global-vocabulary:${userId}`;
-}
-
-function ensureDeletesLoaded(userId) {
-  if (!userId) return;
-  if (loadedDeletesForUserId === userId) return;
-  loadedDeletesForUserId = userId;
-  pendingDeletesById = loadPendingDeletes(getDeletesStorageKey(userId));
-}
-
-function persistDeletes(userId) {
-  if (!userId) return;
-  savePendingDeletes(getDeletesStorageKey(userId), pendingDeletesById);
-}
-
-function chunk(items, size) {
-  const out = [];
-  for (let i = 0; i < items.length; i += size) out.push(items.slice(i, i + size));
-  return out;
-}
-
-async function flushPending(ctx) {
-  if (flushInFlight) return;
-  flushInFlight = true;
-  flushTimer = null;
-  try {
-    ensureDeletesLoaded(ctx.user.id);
-
-    if (!isOnline()) {
-      ensureOnlineListener();
-      scheduleFlush(retryDelayMs);
-      retryDelayMs = Math.min(retryDelayMs * 2, maxRetryDelayMs);
-      return;
-    }
-
-    if (pendingDeletesById.size > 0) {
-      const entries = Array.from(pendingDeletesById.entries());
-      const ids = entries.map(([id]) => id);
-      /** @type {Set<string>} */
-      const doneIds = new Set();
-
-      for (const batchIds of chunk(ids, 100)) {
-        const { data, error } = await ctx.supabase
-          .from('vocabulary')
-          .select('id,updated_at')
-          .eq('user_id', ctx.user.id)
-          .eq('kind', 'global')
-          .in('id', batchIds);
-        if (error) throw error;
-
-        const remoteUpdatedAtById = new Map((data || []).map((row) => [row.id, row.updated_at || '']));
-        const idsToDelete = [];
-        for (const id of batchIds) {
-          const deletedAt = pendingDeletesById.get(id) || '';
-          const remoteUpdatedAt = remoteUpdatedAtById.get(id) || '';
-          if (!remoteUpdatedAt) {
-            doneIds.add(id);
-            continue;
-          }
-          if (String(remoteUpdatedAt) <= String(deletedAt)) {
-            idsToDelete.push(id);
-          } else {
-            doneIds.add(id);
-          }
-        }
-
-        if (idsToDelete.length > 0) {
-          const { error: deleteError } = await ctx.supabase
-            .from('vocabulary')
-            .delete()
-            .eq('user_id', ctx.user.id)
-            .eq('kind', 'global')
-            .in('id', idsToDelete);
-          if (deleteError) throw deleteError;
-          idsToDelete.forEach((id) => doneIds.add(id));
-        }
-      }
-
-      let changed = false;
-      for (const id of doneIds) {
-        if (pendingDeletesById.delete(id)) changed = true;
-      }
-      if (changed) persistDeletes(ctx.user.id);
-    }
-
-    if (pendingUpsertsById.size > 0) {
-      const entries = Array.from(pendingUpsertsById.entries());
-      const rows = entries.map(([, item]) => mapLocalGlobalVocabToRow(ctx.user.id, item));
-      const { error } = await ctx.supabase.from('vocabulary').upsert(rows, { onConflict: 'user_id,id' });
-      if (error) throw error;
-
-      for (const [id, sentItem] of entries) {
-        const current = pendingUpsertsById.get(id);
-        if (!current) continue;
-        const currentUpdatedAt = current?.updatedAt || current?.updated_at || '';
-        const sentUpdatedAt = sentItem?.updatedAt || sentItem?.updated_at || '';
-        if (String(currentUpdatedAt) <= String(sentUpdatedAt)) {
-          pendingUpsertsById.delete(id);
-        }
-      }
-    }
-
-    retryDelayMs = 1500;
-    if (pendingDeletesById.size > 0 || pendingUpsertsById.size > 0) scheduleFlush(250);
-  } catch (error) {
-    console.warn('Supabase global vocab sync failed:', error);
-    scheduleFlush(retryDelayMs);
-    retryDelayMs = Math.min(retryDelayMs * 2, maxRetryDelayMs);
-  } finally {
-    flushInFlight = false;
-  }
-}
-
-function scheduleFlush(delayMs = 1200) {
-  if (flushTimer) return;
-  flushTimer = setTimeout(async () => {
-    const ctx = await getCloudContext();
-    if (!ctx) return;
-    void flushPending(ctx);
-  }, Math.max(0, delayMs));
-}
-
-export async function flushGlobalVocabPendingNow() {
-  const ctx = await getCloudContext();
-  if (!ctx) return;
-  await flushPending(ctx);
-}
-
-export async function queueGlobalVocabUpsert(item) {
-  const ctx = await getCloudContext();
-  if (!ctx) return null;
-  const row = mapLocalGlobalVocabToRow(ctx.user.id, item);
-  ensureDeletesLoaded(ctx.user.id);
-  if (pendingDeletesById.delete(row.id)) persistDeletes(ctx.user.id);
-  pendingUpsertsById.set(row.id, item);
-  scheduleFlush(0);
-  return row;
-}
-
-export async function queueGlobalVocabDelete(id, deletedAt = null) {
-  const ctx = await getCloudContext();
-  if (!ctx) return true;
-  const key = String(id || '').trim();
-  if (!key) return true;
-  ensureDeletesLoaded(ctx.user.id);
-  pendingUpsertsById.delete(key);
-  pendingDeletesById.set(key, deletedAt || new Date().toISOString());
-  persistDeletes(ctx.user.id);
-  scheduleFlush(0);
-  return true;
-}
-
-export async function upsertGlobalVocabRemote(item) {
-  return queueGlobalVocabUpsert(item);
-}
-
-export async function deleteGlobalVocabRemote(id) {
-  return queueGlobalVocabDelete(id);
-}
-
-export async function pullGlobalVocabUpdates({ since = null } = {}) {
+export async function listGlobalVocabRemote() {
   const ctx = await getCloudContext();
   if (!ctx || !isOnline()) return [];
-  let query = ctx.supabase
+
+  const { data, error } = await ctx.supabase
     .from('vocabulary')
     .select('*')
     .eq('user_id', ctx.user.id)
-    .eq('kind', 'global');
-  if (since) query = query.gt('updated_at', since);
-  const { data, error } = await query.order('updated_at', { ascending: true });
+    .eq('kind', 'global')
+    .order('updated_at', { ascending: true });
+
   if (error) throw error;
   return (data || []).map(mapRowToLocalGlobalVocab);
+}
+
+export async function upsertGlobalVocabRemote(item) {
+  const ctx = await getCloudContext();
+  if (!ctx) return null;
+  const row = mapLocalGlobalVocabToRow(ctx.user.id, item);
+  const { error } = await ctx.supabase.from('vocabulary').upsert([row], { onConflict: 'user_id,id' });
+  if (error) throw error;
+  return row;
+}
+
+export async function deleteGlobalVocabRemote(id) {
+  const ctx = await getCloudContext();
+  if (!ctx) return false;
+  const key = String(id || '').trim();
+  if (!key) return true;
+  const { error } = await ctx.supabase
+    .from('vocabulary')
+    .delete()
+    .eq('user_id', ctx.user.id)
+    .eq('kind', 'global')
+    .eq('id', key);
+  if (error) throw error;
+  return true;
 }

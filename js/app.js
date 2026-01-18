@@ -3,7 +3,6 @@
  * Coordinates all modules and handles UI interactions
  */
 
-import { autoSyncIfNeeded, getSyncStatus, setSyncStatusListener, startBackgroundSync, stopBackgroundSync, syncNow } from './sync-service.js';
 import { initDB } from './db.js';
 import { elements } from './ui/dom-refs.js';
 import { showNotification } from './ui/notifications.js';
@@ -62,25 +61,16 @@ async function init() {
     reviewController.init({ onBackToBookshelf: switchToBookshelf });
     vocabLibraryController.init({ onBackToBookshelf: switchToBookshelf, onStartReview: switchToReview });
     settingsModalController.init({
-      getSyncStatus,
-      onAfterSave: handleAfterSettingsSaved,
-      onSyncNow: () => {
-        const bookId = readerController.getCurrentBookId();
-        if (bookId) syncNow(bookId);
-      }
+      onAfterSave: handleAfterSettingsSaved
     });
     authModalController.init({
       onUserChanged: () => {
         void bookshelfController.refreshBookshelf();
         void bookshelfController.refreshBookshelfReviewButtons();
-        void autoSyncIfNeeded({ reason: 'auth' });
       }
     });
 
     setupGlobalKeyHandlers();
-
-    setSyncStatusListener((status) => settingsModalController.updateSyncUI(status));
-    settingsModalController.updateSyncUI(getSyncStatus());
 
     viewRouter.navigate('bookshelf');
     currentView = 'bookshelf';
@@ -121,30 +111,17 @@ function setupGlobalKeyHandlers() {
   });
 }
 
-function handleAfterSettingsSaved(settings) {
+function handleAfterSettingsSaved() {
   void bookshelfController.refreshBookshelfReviewButtons();
-
-  stopBackgroundSync();
-  const bookId = readerController.getCurrentBookId();
-  if (currentView === 'reader' && bookId) {
-    startBackgroundSync(bookId);
-    if (settings?.syncEnabled) syncNow(bookId);
-  }
 }
 
 async function switchToReview(language = null) {
   if (currentView === 'reader') {
     void readerController.saveCurrentProgress();
-    stopBackgroundSync();
   }
 
   viewRouter.navigate('review');
   currentView = 'review';
-  try {
-    await syncNow(null);
-  } catch {
-    // ignore
-  }
   await reviewController.startReview(language);
 }
 
@@ -152,8 +129,6 @@ function switchToBookshelf() {
   if (currentView === 'reader') {
     void readerController.saveCurrentProgress();
   }
-
-  stopBackgroundSync();
 
   viewRouter.navigate('bookshelf');
   currentView = 'bookshelf';
@@ -165,17 +140,11 @@ function switchToBookshelf() {
 async function switchToVocabLibrary() {
   if (currentView === 'reader') {
     void readerController.saveCurrentProgress();
-    stopBackgroundSync();
   }
 
   viewRouter.navigate('vocab-library');
   currentView = 'vocab-library';
 
-  try {
-    await syncNow(null);
-  } catch {
-    // ignore
-  }
   await vocabLibraryController.loadVocabLibrary();
 }
 
@@ -189,14 +158,6 @@ async function switchToReader(bookId) {
 
   if (result?.ok) {
     const id = readerController.getCurrentBookId();
-    if (id) {
-      startBackgroundSync(id);
-      try {
-        await syncNow(id);
-      } catch {
-        // ignore
-      }
-    }
   }
 }
 

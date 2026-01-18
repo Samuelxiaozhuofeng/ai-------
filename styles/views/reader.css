@@ -833,12 +833,6 @@ input[type="range"] {
   justify-content: center;
 }
 
-.sync-status-text {
-  margin-left: var(--spacing-sm);
-  font-size: var(--font-size-sm);
-  color: var(--text-secondary);
-}
-
 .input {
   width: 100%;
   padding: 8px 12px;

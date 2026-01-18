@@ -42,9 +42,6 @@
           <button class="btn btn-secondary" id="reviewBtn" title="开始复习">
             <span class="icon">🗓️</span> 复习
           </button>
-          <div class="sync-indicator" id="syncIndicatorShelf" title="Sync status">
-            <span class="sync-dot"></span> <span class="sync-label mobile-hide">Offline</span>
-          </div>
           <button class="btn btn-secondary" id="authBtn" title="登录 / 注册">
             <span class="auth-icon">🔐</span>
             <span class="auth-label">登录</span>
@@ -112,9 +109,6 @@
           <span class="book-title" id="bookTitle">No book loaded</span>
         </div>
         <div class="header-right">
-          <div class="sync-indicator" id="syncIndicator" title="Sync status">
-            <span class="sync-dot"></span> <span class="sync-label mobile-hide">Offline</span>
-          </div>
           <button class="btn btn-ghost" id="typographyBtn" title="阅读排版" aria-label="阅读排版">
             <span class="icon">Aa</span>
           </button>
@@ -508,9 +502,6 @@
           <button class="settings-tab" data-settings-tab="reading" id="settingsTabReading">
             📖 阅读
           </button>
-          <button class="settings-tab" data-settings-tab="sync" id="settingsTabSync">
-            🔄 同步
-          </button>
           <button class="settings-tab" data-settings-tab="fsrs" id="settingsTabFSRS">
             🧠 FSRS
           </button>
@@ -595,24 +586,6 @@
                 style="padding: var(--spacing-md); border-radius: var(--radius-md); background: var(--bg-secondary); border: 1px solid var(--border-subtle); font-family: var(--reader-font-family); font-size: var(--reader-font-size); line-height: var(--reader-line-height); color: var(--text-primary);">
                 The quick brown fox jumps over the lazy dog. / El veloz murciélago hindú comía feliz cardillo y kiwi.
               </div>
-            </div>
-          </div>
-
-          <!-- Sync Settings Tab Content -->
-          <div class="settings-tab-content" id="syncSettingsContent">
-            <div class="form-group">
-              <label for="backendUrl">Backend URL</label>
-              <input type="url" id="backendUrl" placeholder="http://localhost:8000" class="input" />
-            </div>
-            <div class="form-group">
-              <label class="checkbox-row">
-                <input type="checkbox" id="syncEnabledToggle" />
-                <span>启用后台同步（每 30 秒）</span>
-              </label>
-            </div>
-            <div class="form-group">
-              <button class="btn btn-secondary" id="syncNowBtn">Sync Now</button>
-              <span class="sync-status-text" id="syncStatusText">Offline</span>
             </div>
           </div>
 

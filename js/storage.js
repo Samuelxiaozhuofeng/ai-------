@@ -25,8 +25,6 @@ const DEFAULT_SETTINGS = {
   model: "",
   language: "中文",
   readingLevel: "intermediate",
-  backendUrl: "http://localhost:8000",
-  syncEnabled: false,
 };
 
 // Default layout settings
@@ -104,7 +102,21 @@ export function getSettings() {
   try {
     const stored = localStorage.getItem(STORAGE_KEYS.SETTINGS);
     if (stored) {
-      return { ...DEFAULT_SETTINGS, ...JSON.parse(stored) };
+      const parsed = JSON.parse(stored);
+      let changed = false;
+      if (Object.prototype.hasOwnProperty.call(parsed, 'syncEnabled')) {
+        delete parsed.syncEnabled;
+        changed = true;
+      }
+      if (Object.prototype.hasOwnProperty.call(parsed, 'backendUrl')) {
+        delete parsed.backendUrl;
+        changed = true;
+      }
+      const next = { ...DEFAULT_SETTINGS, ...parsed };
+      if (changed) {
+        localStorage.setItem(STORAGE_KEYS.SETTINGS, JSON.stringify(next));
+      }
+      return next;
     }
   } catch (e) {
     console.error("Failed to load settings:", e);

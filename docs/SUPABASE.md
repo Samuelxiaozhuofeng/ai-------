@@ -1,4 +1,4 @@
-# Supabase Setup (Cloud Sync)
+# Supabase Setup (Cloud Storage)
 
 ## 1) Create a Supabase project
 - Enable Email auth (or your preferred provider) in `Authentication`.
@@ -17,12 +17,10 @@ This project is plain HTML + ES Modules (no bundler). The browser can't read `.e
 
 `env.js` is gitignored by default.
 
-## 4) Enable sync in-app
+## 4) Sign in
 - Open the app
-- Click `🔐 登录` and sign in
-- Open `⚙️ 设置 → 🔄 同步` and enable `syncEnabled`
+- Click `🔐 登录` and sign in to access cloud data
 
 ## Notes
 - EPUB files upload to Supabase Storage bucket `epubs` under `<user_id>/<book_id>.epub`.
-- Existing IndexedDB books imported before this change do not contain the original EPUB file; to sync those books across devices you must re-upload the EPUB.
-
+- Existing IndexedDB books imported before this change do not contain the original EPUB file; to access those books across devices you must re-upload the EPUB.
