@@ -2,6 +2,8 @@ export function createZenModeController(elements, callbacks = {}) {
   const EDGE_THRESHOLD_PX = 50;
   const UI_HIDE_DELAY_MS = 3000;
   const CARD_WIDTH_PX = 340;
+  // 与词卡宽度一致的半宽位移，用于腾出右侧空间
+  const CARD_SHIFT_PX = Math.round(CARD_WIDTH_PX / 2);
   const CARD_GAP_PX = 20;
   const CARD_MIN_TOP_PX = 80;
   const CARD_BOTTOM_GAP_PX = 20;
@@ -30,7 +32,6 @@ export function createZenModeController(elements, callbacks = {}) {
     if (!zenModeActive || !elements.vocabPanel) return;
     if (wordEl) lastWordEl = wordEl;
     elements.vocabPanel.classList.add('zen-sidebar-visible');
-    elements.readingContent?.classList.add('zen-content-shifted');
     updateZenSidebarPosition(lastWordEl);
     bindEscClose();
   }
@@ -72,10 +73,12 @@ export function createZenModeController(elements, callbacks = {}) {
     const effectiveWidth = Math.min(contentRect.width, contentMaxWidth);
     const readingColumnRight = contentRect.left + (contentRect.width / 2) + (effectiveWidth / 2);
 
-    const availableSpace = (window.innerWidth || 0) - readingColumnRight;
     const requiredSpace = CARD_WIDTH_PX + 40;
+    // 先预留左移后的空间，避免过早触发窄屏降级
+    const availableSpace = (window.innerWidth || 0) - (readingColumnRight - CARD_SHIFT_PX);
     const shouldFallback = availableSpace < requiredSpace;
     elements.readerView.classList.toggle('zen-note-fallback', shouldFallback);
+    elements.readingContent.classList.toggle('zen-content-shifted', !shouldFallback);
 
     const wordRect = wordEl.getBoundingClientRect();
     const viewportHeight = window.innerHeight || 0;
@@ -83,7 +86,8 @@ export function createZenModeController(elements, callbacks = {}) {
     const maxHeight = Math.round(viewportHeight * CARD_MAX_HEIGHT_RATIO);
     const maxTop = Math.max(CARD_MIN_TOP_PX, viewportHeight - maxHeight - CARD_BOTTOM_GAP_PX);
     const cardTop = Math.max(CARD_MIN_TOP_PX, Math.min(wordRect.top, maxTop));
-    const cardLeft = readingColumnRight + CARD_GAP_PX;
+    const appliedShift = shouldFallback ? 0 : CARD_SHIFT_PX;
+    const cardLeft = readingColumnRight - appliedShift + CARD_GAP_PX;
     const pointerOffset = (wordRect.top + wordRect.height / 2) - cardTop;
     const initialPointer = Math.max(POINTER_PADDING_PX, pointerOffset);
 
