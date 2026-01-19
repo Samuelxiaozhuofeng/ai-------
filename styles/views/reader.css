@@ -971,7 +971,16 @@ input[type="range"] {
    ============================================ */
 @media (min-width: 769px) {
   .reader-view.zen-mode .reading-content {
-    padding-right: 400px;
+    transform: translateX(0);
+    transition: transform 0.3s cubic-bezier(0.2, 0, 0, 1);
+  }
+
+  .reader-view.zen-mode .reading-content.zen-content-shifted {
+    transform: translateX(-170px);
+  }
+
+  .reader-view.zen-mode.zen-note-fallback .reading-content {
+    transform: none;
   }
 
   .reader-view.zen-mode .vocab-panel {
@@ -1162,6 +1171,10 @@ input[type="range"] {
 }
 
 @media (min-width: 769px) and (prefers-reduced-motion: reduce) {
+  .reader-view.zen-mode .reading-content {
+    transition: none;
+  }
+
   .reader-view.zen-mode .vocab-panel {
     transition: none;
   }

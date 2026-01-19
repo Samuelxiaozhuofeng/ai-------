@@ -30,6 +30,7 @@ export function createZenModeController(elements, callbacks = {}) {
     if (!zenModeActive || !elements.vocabPanel) return;
     if (wordEl) lastWordEl = wordEl;
     elements.vocabPanel.classList.add('zen-sidebar-visible');
+    elements.readingContent?.classList.add('zen-content-shifted');
     updateZenSidebarPosition(lastWordEl);
     bindEscClose();
   }
@@ -37,6 +38,7 @@ export function createZenModeController(elements, callbacks = {}) {
   function hideZenSidebar() {
     if (!elements.vocabPanel) return;
     elements.vocabPanel.classList.remove('zen-sidebar-visible');
+    elements.readingContent?.classList.remove('zen-content-shifted');
     elements.readerView?.classList.remove('zen-note-fallback');
     unbindEscClose();
   }
