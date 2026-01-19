@@ -31,8 +31,12 @@ export function createZenModeController(elements, callbacks = {}) {
   function showZenSidebar(wordEl = null) {
     if (!zenModeActive || !elements.vocabPanel) return;
     if (wordEl) lastWordEl = wordEl;
+    const wasVisible = elements.vocabPanel.classList.contains('zen-sidebar-visible');
     elements.vocabPanel.classList.add('zen-sidebar-visible');
-    updateZenSidebarPosition(lastWordEl);
+    // 面板已显示时保持位置不动，仅在首次显示时计算位置
+    if (!wasVisible) {
+      updateZenSidebarPosition(lastWordEl);
+    }
     bindEscClose();
   }
 
