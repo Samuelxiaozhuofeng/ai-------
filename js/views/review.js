@@ -1,16 +1,20 @@
 import { SUPPORTED_LANGUAGES, getFsrsSettings } from '../storage.js';
 import { getLanguageFilter } from '../core/language-filter.js';
 import { globalVocabByWord, refreshGlobalVocabCache } from '../core/global-vocab-cache.js';
-import { getDueCards, getReviewStats, previewNextIntervals, reviewCard } from '../srs-service.js';
-import { deleteGlobalVocabItem, makeGlobalVocabId } from '../db.js';
+import { getReviewStats, previewNextIntervals, reviewCard } from '../srs-service.js';
+import { deleteGlobalVocabItem, listDueCards, listDueCardsByLanguage, makeGlobalVocabId } from '../db.js';
 import { ModalManager } from '../ui/modal-manager.js';
 import { showNotification } from '../ui/notifications.js';
+import { hideReviewLoading, showReviewLoading } from '../ui/loading.js';
 
 let currentReviewLanguage = null; // null for mixed mode
 let reviewQueue = [];
 let reviewIndex = 0;
 let currentReviewItem = null;
 let isReviewAnswerShown = false;
+const preloadedIntervals = new Map();
+let reviewSessionStartAt = 0;
+let hasLoggedFirstCard = false;
 
 /** @type {{ backToBookshelf: () => void }} */
 let navigation = {
@@ -146,45 +150,126 @@ export function createReviewController(elements) {
     }
   }
 
-  async function showNextCard() {
+  function applyReviewIntervals(intervals) {
+    if (!intervals) return;
+    setReviewText(elements.reviewAgainInterval, intervals.again, '');
+    setReviewText(elements.reviewGoodInterval, intervals.good, '');
+    setReviewText(elements.reviewHardInterval, intervals.hard, '');
+    setReviewText(elements.reviewEasyInterval, intervals.easy, '');
+  }
+
+  function clearReviewIntervals() {
+    setReviewText(elements.reviewAgainInterval, '', '');
+    setReviewText(elements.reviewGoodInterval, '', '');
+    setReviewText(elements.reviewHardInterval, '', '');
+    setReviewText(elements.reviewEasyInterval, '', '');
+  }
+
+  function readPreloadedIntervals(item) {
+    const key = getReviewGlobalId(item);
+    if (!key) return null;
+    const cached = preloadedIntervals.get(key) || null;
+    if (cached) preloadedIntervals.delete(key);
+    return cached;
+  }
+
+  async function preloadIntervals(items) {
+    const now = new Date();
+    const tasks = (items || [])
+      .filter(Boolean)
+      .map(async (item) => {
+        const key = getReviewGlobalId(item);
+        if (!key || preloadedIntervals.has(key)) return;
+        try {
+          const intervals = await previewNextIntervals(item, now);
+          preloadedIntervals.set(key, intervals);
+        } catch (error) {
+          console.warn('预加载复习间隔失败:', error);
+        }
+      });
+    await Promise.all(tasks);
+  }
+
+  async function showNextCard(options = {}) {
     if (reviewIndex >= reviewQueue.length) {
       await loadReviewSession();
       return;
     }
 
+    const fast = Boolean(options.fast);
     currentReviewItem = reviewQueue[reviewIndex];
     const display = currentReviewItem?.lemma || currentReviewItem?.displayWord || currentReviewItem?.normalizedWord || currentReviewItem?.id || '—';
 
     setReviewText(elements.reviewWord, display);
-    setReviewText(elements.reviewMeaning, currentReviewItem?.meaning);
-    setReviewText(elements.reviewUsage, currentReviewItem?.usage);
     setReviewText(elements.reviewContext, currentReviewItem?.contextSentence);
-    setReviewText(elements.reviewContextualMeaning, currentReviewItem?.contextualMeaning);
-
     setReviewAnswerVisibility(false);
+    clearReviewIntervals();
+    hideReviewLoading();
 
-    const intervals = await previewNextIntervals(currentReviewItem, new Date());
-    setReviewText(elements.reviewAgainInterval, intervals.again, '');
-    setReviewText(elements.reviewGoodInterval, intervals.good, '');
+    if (fast) {
+      setReviewText(elements.reviewMeaning, '加载中...');
+      setReviewText(elements.reviewUsage, '加载中...');
+      setReviewText(elements.reviewContextualMeaning, '加载中...');
+    } else {
+      setReviewText(elements.reviewMeaning, currentReviewItem?.meaning);
+      setReviewText(elements.reviewUsage, currentReviewItem?.usage);
+      setReviewText(elements.reviewContextualMeaning, currentReviewItem?.contextualMeaning);
+    }
+
+    if (!hasLoggedFirstCard) {
+      const now = typeof performance !== 'undefined' ? performance.now() : Date.now();
+      console.log('[Performance] Review first card shown in:', `${Math.round(now - reviewSessionStartAt)}ms`);
+      hasLoggedFirstCard = true;
+    }
+
+    const applyDetails = async () => {
+      if (!currentReviewItem) return;
+      const key = getReviewGlobalId(currentReviewItem);
+      const cachedIntervals = readPreloadedIntervals(currentReviewItem);
+      try {
+        const intervals = cachedIntervals || await previewNextIntervals(currentReviewItem, new Date());
+        if (getReviewGlobalId(currentReviewItem) !== key) return;
+        setReviewText(elements.reviewMeaning, currentReviewItem?.meaning);
+        setReviewText(elements.reviewUsage, currentReviewItem?.usage);
+        setReviewText(elements.reviewContextualMeaning, currentReviewItem?.contextualMeaning);
+        applyReviewIntervals(intervals);
+      } catch (error) {
+        console.warn('加载复习间隔失败:', error);
+      }
+    };
+
+    if (fast) {
+      setTimeout(() => void applyDetails(), 0);
+      return;
+    }
+
+    await applyDetails();
   }
 
   async function loadReviewSession() {
     const now = new Date();
+    showReviewLoading('正在加载...');
     const stats = await getReviewStats(now, currentReviewLanguage);
     renderReviewStats(stats);
 
-    reviewQueue = await getDueCards(now, currentReviewLanguage);
+    reviewQueue = currentReviewLanguage
+      ? await listDueCardsByLanguage(now, currentReviewLanguage)
+      : await listDueCards(now);
     reviewQueue = reviewQueue.sort(() => Math.random() - 0.5);
     reviewIndex = 0;
     currentReviewItem = null;
+    preloadedIntervals.clear();
+    hasLoggedFirstCard = false;
 
     if (reviewQueue.length === 0) {
+      hideReviewLoading();
       setReviewVisibility('empty');
       return;
     }
 
     setReviewVisibility('session');
-    await showNextCard();
+    await showNextCard({ fast: true });
+    setTimeout(() => void preloadIntervals(reviewQueue.slice(1, 4)), 300);
   }
 
   async function startReview(language = null) {
@@ -206,6 +291,8 @@ export function createReviewController(elements) {
       elements.reviewTitle.textContent = `📚 复习${langLabel}`;
     }
 
+    reviewSessionStartAt = typeof performance !== 'undefined' ? performance.now() : Date.now();
+    showReviewLoading('正在加载...');
     await refreshGlobalVocabCache();
     await loadReviewSession();
   }

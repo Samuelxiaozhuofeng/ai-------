@@ -4,12 +4,19 @@ import {
   hashCanonicalText,
   renderTokenizedChapterContent
 } from '../../utils/tokenizer.js';
+import {
+  buildPaginationCacheKey,
+  getCachedPagination,
+  isPaginationCacheEnabled,
+  setCachedPagination
+} from './pagination-cache.js';
 import { globalVocabByWord } from '../../core/global-vocab-cache.js';
 import { makeGlobalVocabId, upsertGlobalKnownItems } from '../../db.js';
 import { isGlobalKnownEnabled } from '../../storage.js';
 import { updatePageProgressCloud } from '../../supabase/progress-repo.js';
 import { upsertBookVocabularyItems } from '../../supabase/vocabulary-repo.js';
 import { WORD_STATUSES } from '../../word-status.js';
+import { showReaderLoading } from '../../ui/loading.js';
 
 export function createPaginationEngine({
   elements,
@@ -133,7 +140,29 @@ export function createPaginationEngine({
     return best;
   }
 
-  function paginateTokenizedWrapper(wrapper, pageHeightPx) {
+  function getChapterPreviewHash(canonicalText) {
+    const preview = String(canonicalText || '').slice(0, 100);
+    return hashCanonicalText(preview);
+  }
+
+  async function paginateTokenizedWrapper(wrapper, pageHeightPx, options = {}) {
+    const cacheEnabled = Boolean(options?.cacheEnabled);
+    const cacheKey = options?.cacheKey || null;
+    const startAt = typeof performance !== 'undefined' ? performance.now() : Date.now();
+
+    if (cacheEnabled && cacheKey) {
+      const cached = await getCachedPagination(cacheKey);
+      const cacheHit = Boolean(cached?.pages?.length);
+      console.log('[Performance] Pagination cache hit:', cacheHit);
+      if (cacheHit) {
+        const cachedOffsets = Array.isArray(cached.pageStartCharOffsets) ? cached.pageStartCharOffsets : [];
+        return { pages: cached.pages, pageStartCharOffsets: cachedOffsets };
+      }
+      console.log('[Performance] Pagination cache MISS, computing...');
+    } else {
+      console.log('[Performance] Pagination cache hit:', false);
+    }
+
     const pageWrapper = ensurePaginationMeasure(pageHeightPx);
     const pageHeight = Math.max(0, pageWrapper.clientHeight || pageHeightPx);
 
@@ -196,6 +225,15 @@ export function createPaginationEngine({
 
     const safePages = pages.length > 0 ? pages : [''];
     const safeOffsets = pageStartCharOffsets.length === safePages.length ? pageStartCharOffsets : safePages.map(() => 0);
+    const endAt = typeof performance !== 'undefined' ? performance.now() : Date.now();
+    console.log('[Performance] Pagination completed in:', `${Math.round(endAt - startAt)}ms`);
+    if (cacheEnabled && cacheKey) {
+      void setCachedPagination(cacheKey, {
+        pages: safePages,
+        pageStartCharOffsets: safeOffsets,
+        chapterTextHash: options?.chapterTextHash || null
+      });
+    }
     return { pages: safePages, pageStartCharOffsets: safeOffsets };
   }
 
@@ -327,9 +365,20 @@ export function createPaginationEngine({
   function renderCurrentPage(direction = 'none') {
     elements.readingContent.innerHTML = '';
 
-    const wrapper = document.createElement('div');
-    wrapper.innerHTML = state.chapterPages[state.currentPageIndex] || '';
-    elements.readingContent.appendChild(wrapper);
+    const total = state.chapterPages.length || 0;
+    const currentIndex = Math.max(0, Math.min(state.currentPageIndex, Math.max(0, total - 1)));
+    const pageIndices = [currentIndex];
+    if (currentIndex + 1 < total) pageIndices.push(currentIndex + 1);
+    if (currentIndex - 1 >= 0) pageIndices.push(currentIndex - 1);
+
+    let currentWrapper = null;
+    pageIndices.forEach((index) => {
+      const wrapper = document.createElement('div');
+      wrapper.dataset.pageIndex = String(index);
+      wrapper.innerHTML = state.chapterPages[index] || '';
+      elements.readingContent.appendChild(wrapper);
+      if (index === currentIndex) currentWrapper = wrapper;
+    });
 
     state.clickedWordsOnPage = new Set();
     if (state.selectedWordEl) state.selectedWordEl = null;
@@ -338,8 +387,8 @@ export function createPaginationEngine({
     schedulePageProgressSave();
 
     const fromX = direction === 'next' ? 18 : direction === 'prev' ? -18 : 0;
-    if (fromX !== 0) {
-      wrapper.animate(
+    if (fromX !== 0 && currentWrapper) {
+      currentWrapper.animate(
         [
           { opacity: 0.5, transform: `translateX(${fromX}px)` },
           { opacity: 1, transform: 'translateX(0px)' }
@@ -569,69 +618,77 @@ export function createPaginationEngine({
     }
   }
 
-  function renderChapterContent(chapterContent, options = {}) {
+  async function renderChapterContent(chapterContent, options = {}) {
     const language = (getCurrentBookLanguage() || 'en').toString().trim().toLowerCase();
+    const renderStartAt = typeof performance !== 'undefined' ? performance.now() : Date.now();
 
     if (state.isPageFlipMode) {
-      if (language === 'ja') {
-        const requestId = ++renderRequestId;
-          let pageHeight = elements.readingContent.clientHeight || 520;
-        if (elements.readerView?.classList.contains('zen-mode')) {
-          pageHeight = Math.floor(pageHeight * 0.9);
-        }
-        elements.readingContent.innerHTML = '<p class="loading">Loading Japanese tokens...</p>';
+      const requestId = ++renderRequestId;
+      showReaderLoading('正在加载...');
 
-        const bookId = state.currentBookId || null;
-        const chapterId = state.currentBook?.chapters?.[state.currentChapterIndex]?.id || null;
-
-        void (async () => {
-          try {
-            const { wrapper, canonicalText } = await buildTokenizedChapterWrapperWithMetaForLanguage(chapterContent, {
-              language: 'ja',
-              bookId,
-              chapterId
-            });
-            if (requestId !== renderRequestId) return;
-
-            const { pages, pageStartCharOffsets } = paginateTokenizedWrapper(wrapper, pageHeight);
-            state.chapterPages = pages;
-            state.pageStartCharOffsets = pageStartCharOffsets;
-            state.chapterTextHash = hashCanonicalText(canonicalText);
-
-            if (options?.startPage === 'last') {
-              state.currentPageIndex = Math.max(0, state.chapterPages.length - 1);
-            } else if (
-              typeof options?.startCharOffset === 'number' &&
-              typeof options?.chapterTextHash === 'string' &&
-              options.chapterTextHash &&
-              options.chapterTextHash === state.chapterTextHash
-            ) {
-              state.currentPageIndex = findPageIndexByCharOffset(state.pageStartCharOffsets, options.startCharOffset);
-            } else if (typeof options?.startPage === 'number') {
-              state.currentPageIndex = Math.min(Math.max(0, options.startPage), Math.max(0, state.chapterPages.length - 1));
-            } else {
-              state.currentPageIndex = 0;
-            }
-
-            renderCurrentPage('none');
-          } catch (error) {
-            console.warn('Japanese wrapper build failed:', error);
-            if (requestId !== renderRequestId) return;
-            elements.readingContent.innerHTML = '<p class="loading">Failed to load Japanese tokens.</p>';
-          }
-        })();
-        return;
+      let pageHeight = elements.readingContent.clientHeight || 520;
+      if (elements.readerView?.classList.contains('zen-mode')) {
+        pageHeight = Math.floor(pageHeight * 0.9);
       }
 
-        let pageHeight = elements.readingContent.clientHeight || 520;
-        if (elements.readerView?.classList.contains('zen-mode')) {
-          pageHeight = Math.floor(pageHeight * 0.9);
+      const bookId = state.currentBookId || null;
+      const chapterId = state.currentBook?.chapters?.[state.currentChapterIndex]?.id || null;
+      const cacheEnabled = isPaginationCacheEnabled();
+
+      if (language === 'ja') {
+        try {
+          const { wrapper, canonicalText } = await buildTokenizedChapterWrapperWithMetaForLanguage(chapterContent, {
+            language: 'ja',
+            bookId,
+            chapterId
+          });
+          if (requestId !== renderRequestId) return;
+
+          const chapterTextHash = hashCanonicalText(canonicalText);
+          const cacheKey = buildPaginationCacheKey({
+            bookId: state.currentBookId,
+            chapterIndex: state.currentChapterIndex,
+            chapterHash: getChapterPreviewHash(canonicalText),
+            readingContent: elements.readingContent,
+            readerView: elements.readerView
+          });
+          const { pages, pageStartCharOffsets } = await paginateTokenizedWrapper(wrapper, pageHeight, {
+            cacheKey,
+            cacheEnabled: cacheEnabled && Boolean(cacheKey),
+            chapterTextHash
+          });
+          if (requestId !== renderRequestId) return;
+
+          state.chapterPages = pages;
+          state.pageStartCharOffsets = pageStartCharOffsets;
+          state.chapterTextHash = chapterTextHash;
+        } catch (error) {
+          console.warn('Japanese wrapper build failed:', error);
+          if (requestId !== renderRequestId) return;
+          elements.readingContent.innerHTML = '<p class="loading">日语分词加载失败。</p>';
+          return;
         }
-      const { wrapper, canonicalText } = buildTokenizedChapterWrapperWithMeta(chapterContent);
-      const { pages, pageStartCharOffsets } = paginateTokenizedWrapper(wrapper, pageHeight);
-      state.chapterPages = pages;
-      state.pageStartCharOffsets = pageStartCharOffsets;
-      state.chapterTextHash = hashCanonicalText(canonicalText);
+      } else {
+        const { wrapper, canonicalText } = buildTokenizedChapterWrapperWithMeta(chapterContent);
+        const chapterTextHash = hashCanonicalText(canonicalText);
+        const cacheKey = buildPaginationCacheKey({
+          bookId: state.currentBookId,
+          chapterIndex: state.currentChapterIndex,
+          chapterHash: getChapterPreviewHash(canonicalText),
+          readingContent: elements.readingContent,
+          readerView: elements.readerView
+        });
+        const { pages, pageStartCharOffsets } = await paginateTokenizedWrapper(wrapper, pageHeight, {
+          cacheKey,
+          cacheEnabled: cacheEnabled && Boolean(cacheKey),
+          chapterTextHash
+        });
+        if (requestId !== renderRequestId) return;
+
+        state.chapterPages = pages;
+        state.pageStartCharOffsets = pageStartCharOffsets;
+        state.chapterTextHash = chapterTextHash;
+      }
 
       if (options?.startPage === 'last') {
         state.currentPageIndex = Math.max(0, state.chapterPages.length - 1);
@@ -649,6 +706,8 @@ export function createPaginationEngine({
       }
 
       renderCurrentPage('none');
+      const renderEndAt = typeof performance !== 'undefined' ? performance.now() : Date.now();
+      console.log('[Performance] First screen rendered in:', `${Math.round(renderEndAt - renderStartAt)}ms`);
       return;
     }
 
@@ -659,7 +718,7 @@ export function createPaginationEngine({
 
     if (language === 'ja') {
       const requestId = ++renderRequestId;
-      elements.readingContent.innerHTML = '<p class="loading">Loading Japanese tokens...</p>';
+      showReaderLoading('正在加载...');
       const bookId = state.currentBookId || null;
       const chapterId = state.currentBook?.chapters?.[state.currentChapterIndex]?.id || null;
 
@@ -679,7 +738,7 @@ export function createPaginationEngine({
         } catch (error) {
           console.warn('Japanese wrapper build failed:', error);
           if (requestId !== renderRequestId) return;
-          elements.readingContent.innerHTML = '<p class="loading">Failed to load Japanese tokens.</p>';
+          elements.readingContent.innerHTML = '<p class="loading">日语分词加载失败。</p>';
           updatePageControls();
         }
       })();

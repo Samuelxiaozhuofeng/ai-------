@@ -64,6 +64,7 @@ uvicorn main:app --reload --port 8000
 ## Data Management
 
 Use Settings → 数据管理 to erase all books, vocabulary, progress, and local settings while keeping your account.
+设置 → 数据管理新增“清除分页缓存”，用于解决分页错乱或释放本地存储。
 
 Click a word in the reader to open it in the Vocabulary panel, then use:
 - `加入学习` → `learning`

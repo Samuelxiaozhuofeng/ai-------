@@ -6,13 +6,14 @@
 import { makeVocabId, normalizeWord } from './word-status.js';
 
 const DB_NAME = 'LanguageReaderDB';
-const DB_VERSION = 7;
+const DB_VERSION = 8;
 const STORE_BOOKS = 'books';
 const STORE_VOCABULARY = 'vocabulary';
 const STORE_PROGRESS = 'progress';
 const STORE_GLOBAL_VOCAB = 'globalVocabulary';
 const STORE_EPUB_FILES = 'epubFiles';
 const STORE_TOKENIZATION_CACHE = 'tokenizationCache';
+const STORE_PAGINATION_CACHE = 'paginationCache';
 
 let db = null;
 let needsGlobalKnownSync = false;
@@ -143,6 +144,13 @@ export async function initDB() {
                 console.log('🈶 Created tokenizationCache store');
             }
 
+            // Create pagination cache store (pages per chapter)
+            if (oldVersion < 8 && !database.objectStoreNames.contains(STORE_PAGINATION_CACHE)) {
+                const store = database.createObjectStore(STORE_PAGINATION_CACHE, { keyPath: 'cacheKey' });
+                store.createIndex('bookId', 'bookId', { unique: false });
+                console.log('📄 Created paginationCache store');
+            }
+
             // Ensure indexes exist for upgraded stores
             if (transaction && database.objectStoreNames.contains(STORE_BOOKS)) {
                 const store = transaction.objectStore(STORE_BOOKS);
@@ -190,6 +198,13 @@ export async function initDB() {
                 }
                 if (!store.indexNames.contains('createdAt')) {
                     store.createIndex('createdAt', 'createdAt', { unique: false });
+                }
+            }
+
+            if (transaction && database.objectStoreNames.contains(STORE_PAGINATION_CACHE)) {
+                const store = transaction.objectStore(STORE_PAGINATION_CACHE);
+                if (!store.indexNames.contains('bookId')) {
+                    store.createIndex('bookId', 'bookId', { unique: false });
                 }
             }
 
@@ -839,7 +854,8 @@ export async function clearAllLocalStores() {
             STORE_PROGRESS,
             STORE_GLOBAL_VOCAB,
             STORE_EPUB_FILES,
-            STORE_TOKENIZATION_CACHE
+            STORE_TOKENIZATION_CACHE,
+            STORE_PAGINATION_CACHE
         ];
 
         const availableStores = storeNames.filter((name) => db.objectStoreNames.contains(name));

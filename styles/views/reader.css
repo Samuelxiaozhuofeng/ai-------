@@ -817,6 +817,48 @@
   to { transform: rotate(360deg); }
 }
 
+.loading-spinner {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  height: 100%;
+  color: var(--text-secondary);
+  text-align: center;
+  animation: loading-pulse 1.5s ease-in-out infinite;
+}
+
+.loading-spinner-icon {
+  width: 14px;
+  height: 14px;
+  border-radius: 999px;
+  border: 2px solid var(--border-default);
+  border-top-color: var(--accent-primary);
+  animation: loading-spinner 0.9s linear infinite;
+  flex-shrink: 0;
+}
+
+.review-card.is-loading {
+  position: relative;
+}
+
+.review-loading {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg-secondary);
+  border-radius: var(--radius-lg);
+  color: var(--text-secondary);
+  animation: loading-pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes loading-pulse {
+  0%, 100% { opacity: 0.6; }
+  50% { opacity: 1; }
+}
+
 .text-error {
   color: var(--accent-error);
 }

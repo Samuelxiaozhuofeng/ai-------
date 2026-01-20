@@ -1,4 +1,5 @@
 import { getBook, saveBook } from '../db.js';
+import { clearCacheForBook } from '../views/reader/pagination-cache.js';
 import { parseEpub } from '../epub-parser.js';
 import { showNotification } from '../ui/notifications.js';
 import { getSupabaseClient, isSupabaseConfigured } from './client.js';
@@ -72,6 +73,7 @@ export async function updateRemoteBook(bookId, updates) {
 
   const { data, error } = await supabase.from('books').update(patch).eq('user_id', user.id).eq('id', id).select('*').single();
   if (error) throw error;
+  void clearCacheForBook(id);
   return mapRemoteBook(data);
 }
 
@@ -134,6 +136,7 @@ export async function ensureLocalBookCached(bookId) {
       processingProgress: 100
     });
 
+    void clearCacheForBook(id);
     showNotification('已从云端下载处理结果并缓存到本地', 'success');
     return getBook(id);
   }
@@ -163,6 +166,7 @@ export async function ensureLocalBookCached(bookId) {
     storageUpdatedAt: remote.storageUpdatedAt || new Date().toISOString()
   });
 
+  void clearCacheForBook(id);
   showNotification('已从云端下载并缓存到本地', 'success');
   return getBook(id);
 }

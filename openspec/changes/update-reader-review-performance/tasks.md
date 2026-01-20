@@ -1,0 +1,11 @@
+## 1. Implementation
+- [x] 1.1 设计分页缓存键与失效策略（bookId + chapterIndex + viewport + chapterTextHash/updatedAt）
+- [x] 1.2 IndexedDB 新增分页缓存 store 与读写封装
+- [x] 1.3 pagination-engine：缓存命中直出；未命中计算并回写；记录命中率
+- [x] 1.4 渐进式渲染：仅渲染当前页与前后各 1 页，按需加载其余页面
+- [x] 1.5 review：预加载前 3 张卡片，后续卡片按需加载
+- [x] 1.6 加载指示器：书籍首屏与复习首卡显示中间态
+- [x] 1.7 回退开关与缓存清理逻辑（书籍更新、视口变化）
+- [x] 1.8 文档更新：CHANGELOG/README
+- [ ] 1.9 性能验证：记录优化前后加载时间
+- [ ] 1.10 测试：关键路径与异常分支覆盖，记录覆盖率差距与改进方案

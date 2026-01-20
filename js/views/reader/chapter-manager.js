@@ -168,7 +168,7 @@ export function createChapterManager({
     const chapter = state.currentBook.chapters[index];
 
     elements.chapterInfo.textContent = chapter.title;
-    pagination.renderChapterContent(chapter.content, options);
+    await pagination.renderChapterContent(chapter.content, options);
 
     elements.chapterSelectList.querySelectorAll('.chapter-item').forEach((btn, i) => {
       btn.classList.toggle('active', i === index);

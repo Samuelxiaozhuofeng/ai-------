@@ -148,6 +148,7 @@ export const elements = {
   dataManagementContent: document.getElementById('dataManagementContent'),
 
   // Data Erasure Modal
+  clearPaginationCacheBtn: document.getElementById('clearPaginationCacheBtn'),
   eraseAllDataBtn: document.getElementById('eraseAllDataBtn'),
   dataEraseModal: document.getElementById('dataEraseModal'),
   closeDataEraseBtn: document.getElementById('closeDataEraseBtn'),

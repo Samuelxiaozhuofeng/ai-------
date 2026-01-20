@@ -13,6 +13,7 @@ import { ModalManager } from './modal-manager.js';
 import { getAutoStudyEnabled, setAutoStudyEnabled } from '../core/auto-study.js';
 import { showNotification } from './notifications.js';
 import { eraseAllUserData } from '../core/data-erasure.js';
+import { clearAllCache } from '../views/reader/pagination-cache.js';
 
 /**
  * @param {import('./dom-refs.js').elements} elements
@@ -245,6 +246,23 @@ export function createSettingsModalController(elements) {
     }, 400);
   }
 
+  async function handleClearPaginationCache() {
+    if (typeof window !== 'undefined') {
+      const ok = window.confirm('确定清除分页缓存吗？');
+      if (!ok) return;
+    }
+    try {
+      const cleared = await clearAllCache();
+      if (!cleared) {
+        showNotification('清除分页缓存失败', 'error');
+        return;
+      }
+      showNotification('分页缓存已清除', 'success');
+    } catch (error) {
+      showNotification(`清除分页缓存失败: ${error.message || error}`, 'error');
+    }
+  }
+
   function open() {
     loadSettingsToForm();
     settingsModalManager.open();
@@ -408,6 +426,7 @@ export function createSettingsModalController(elements) {
     });
 
     elements.eraseAllDataBtn?.addEventListener('click', openEraseModal);
+    elements.clearPaginationCacheBtn?.addEventListener('click', handleClearPaginationCache);
     elements.dataEraseInput?.addEventListener('input', handleEraseInput);
     elements.confirmDataEraseBtn?.addEventListener('click', handleEraseConfirm);
     elements.cancelDataEraseBtn?.addEventListener('click', closeEraseModal);

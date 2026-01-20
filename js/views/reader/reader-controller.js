@@ -14,6 +14,7 @@ import { createVocabPanel } from './vocab-panel.js';
 import { createPaginationEngine } from './pagination-engine.js';
 import { createChapterManager } from './chapter-manager.js';
 import { createZenModeController } from './zen-mode-controller.js';
+import { clearCacheForBook } from './pagination-cache.js';
 
 /**
  * @param {import('../../ui/dom-refs.js').elements} elements
@@ -280,6 +281,16 @@ export function createReaderController(elements) {
           chapterTextHash
         });
       }, 300);
+    });
+
+    let resizeTimer = null;
+    window.addEventListener('resize', () => {
+      if (!state.currentBookId) return;
+      if (elements.readerView.style.display === 'none') return;
+      if (resizeTimer) clearTimeout(resizeTimer);
+      resizeTimer = setTimeout(() => {
+        void clearCacheForBook(state.currentBookId);
+      }, 1000);
     });
   }
 
