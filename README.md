@@ -59,7 +59,7 @@ uvicorn main:app --reload --port 8000
 - `known`: marked as mastered; shown as normal text
 - Known words are shared across books of the same language.
 - Bookshelf header shows Known Words stats with a detail modal (search, language filter, pagination).
-- 自动加入学习：开启后，点击单词会加入学习；判断以本书本地状态为准（本地 learning/known 不重复加入）。
+- 自动加入学习：开启后，点击单词会加入学习；判断以本书本地状态为准（已掌握也会加入，已在学习中不重复加入）。
 
 ## Data Management
 

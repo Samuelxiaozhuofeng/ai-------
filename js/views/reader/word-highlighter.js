@@ -245,8 +245,8 @@ export function createWordHighlighter({
 
     const localEntry = state.vocabularyByWord.get(normalizedWord) || null;
     const localStatus = localEntry?.status || WORD_STATUSES.NEW;
-    // 以本书本地状态判断，避免全局已掌握阻断自动加入学习
-    return localStatus !== WORD_STATUSES.LEARNING && localStatus !== WORD_STATUSES.KNOWN;
+    // 以本书本地状态判断，允许已掌握词加入学习，仅跳过已在学习中的词
+    return localStatus !== WORD_STATUSES.LEARNING;
   }
 
   async function handleReadingWordClick(event) {
