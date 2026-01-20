@@ -203,13 +203,7 @@ export function createWordHighlighter({
     // For single-word selections, keep auto-study behavior consistent with tap-to-lookup.
     const isSingleWordSelection = !normalized.includes(' ');
     if (isSingleWordSelection) {
-      const effectiveStatus = getEffectiveWordStatus(normalized);
-      const shouldAutoStudy = Boolean(
-        normalized
-          && getAutoStudyEnabled()
-          && effectiveStatus !== WORD_STATUSES.LEARNING
-          && effectiveStatus !== WORD_STATUSES.KNOWN
-      );
+      const shouldAutoStudy = shouldAutoStudyWord(normalized);
       if (shouldAutoStudy) {
         setSelectedWordStatus(WORD_STATUSES.LEARNING, { trigger: 'click' })
           .catch((error) => console.warn('Auto-study (selection) failed:', error));
@@ -243,6 +237,16 @@ export function createWordHighlighter({
       el.classList.remove('word-new', 'word-seen', 'word-learning', 'word-known');
       el.classList.add(statusToClass(status));
     });
+  }
+
+  function shouldAutoStudyWord(normalizedWord) {
+    if (!normalizedWord) return false;
+    if (!getAutoStudyEnabled()) return false;
+
+    const localEntry = state.vocabularyByWord.get(normalizedWord) || null;
+    const localStatus = localEntry?.status || WORD_STATUSES.NEW;
+    // 以本书本地状态判断，避免全局已掌握阻断自动加入学习
+    return localStatus !== WORD_STATUSES.LEARNING && localStatus !== WORD_STATUSES.KNOWN;
   }
 
   async function handleReadingWordClick(event) {
@@ -288,13 +292,7 @@ export function createWordHighlighter({
 
     switchTab('vocab-analysis');
 
-    const effectiveStatus = state.selectedWord ? getEffectiveWordStatus(state.selectedWord) : WORD_STATUSES.NEW;
-    const shouldAutoStudy = Boolean(
-      state.selectedWord
-        && getAutoStudyEnabled()
-        && effectiveStatus !== WORD_STATUSES.LEARNING
-        && effectiveStatus !== WORD_STATUSES.KNOWN
-    );
+    const shouldAutoStudy = shouldAutoStudyWord(state.selectedWord);
     if (shouldAutoStudy) {
       setSelectedWordStatus(WORD_STATUSES.LEARNING, { trigger: 'click' })
         .catch((error) => console.warn('Auto-study (click) failed:', error));
