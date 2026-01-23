@@ -201,6 +201,10 @@ export function createReaderController(elements) {
     const defaultEdgeZoneRatio = 0.3;
     const zenEdgeZoneRatio = 0.15;
     let lastTouchEndAt = 0;
+    // 桌面端(精细指针 + 可悬停)点击边缘容易误触，只保留触摸边缘翻页
+    function isDesktopPointerDevice() {
+      return Boolean(window.matchMedia && window.matchMedia('(hover: hover) and (pointer: fine)').matches);
+    }
 
     function getEdgeAction(clientX) {
       const w = window.innerWidth || 0;
@@ -242,6 +246,7 @@ export function createReaderController(elements) {
     }, { passive: false, capture: true });
 
     elements.readingContent.addEventListener('click', (event) => {
+      if (isDesktopPointerDevice()) return;
       if (Date.now() - lastTouchEndAt < 500) return;
       handleEdgeFlip(event.clientX, event);
     }, { capture: true });
