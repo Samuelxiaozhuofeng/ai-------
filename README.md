@@ -24,6 +24,7 @@ Then open `http://localhost:5173/`.
 ```bash
 docker compose up
 ```
+1
 
 Backend runs on `http://localhost:8000`.
 
