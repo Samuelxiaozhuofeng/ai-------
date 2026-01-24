@@ -1,4 +1,4 @@
-import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm';
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
 const FALLBACK_SUPABASE_URL = 'YOUR_SUPABASE_URL';
 const FALLBACK_SUPABASE_ANON_KEY = 'YOUR_SUPABASE_ANON_KEY';
@@ -17,9 +17,9 @@ function isPlaceholder(value) {
 
 export function getSupabaseConfig() {
   const injected = /** @type {any} */ (globalThis).__SUPABASE__ || {};
-  const url = readString(injected.url) || readString(/** @type {any} */ (globalThis).SUPABASE_URL) || FALLBACK_SUPABASE_URL;
+  const url = readString(injected.url) || readString(/** @type {any} */(globalThis).SUPABASE_URL) || FALLBACK_SUPABASE_URL;
   const anonKey =
-    readString(injected.anonKey) || readString(/** @type {any} */ (globalThis).SUPABASE_ANON_KEY) || FALLBACK_SUPABASE_ANON_KEY;
+    readString(injected.anonKey) || readString(/** @type {any} */(globalThis).SUPABASE_ANON_KEY) || FALLBACK_SUPABASE_ANON_KEY;
 
   const configured = !isPlaceholder(url) && !isPlaceholder(anonKey);
   return { url, anonKey, configured };
