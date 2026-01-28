@@ -138,6 +138,13 @@
   padding: 10px 12px;
 }
 
+.review-context-highlight {
+  font-weight: 700;
+  background: var(--mark-bg);
+  border-radius: 4px;
+  padding: 0 2px;
+}
+
 .review-actions {
   display: grid;
   grid-template-columns: repeat(2, 1fr);

@@ -6,6 +6,9 @@ import { deleteGlobalVocabItem, listDueCards, listDueCardsByLanguage, makeGlobal
 import { ModalManager } from '../ui/modal-manager.js';
 import { showNotification } from '../ui/notifications.js';
 import { hideReviewLoading, showReviewLoading } from '../ui/loading.js';
+import { escapeHtml } from '../utils/html.js';
+import { getWordRegex } from '../utils/tokenizer.js';
+import { normalizeWord } from '../word-status.js';
 
 let currentReviewLanguage = null; // null for mixed mode
 let reviewQueue = [];
@@ -53,6 +56,66 @@ export function createReviewController(elements) {
     el.textContent = text ? text : fallback;
   }
 
+  function getReviewHighlightTargets(item) {
+    const targets = new Set();
+    const add = (value) => {
+      const normalized = normalizeWord(value || '');
+      if (normalized) targets.add(normalized);
+    };
+    if (!item) return targets;
+    add(item.normalizedWord);
+    add(item.displayWord);
+    add(item.lemma);
+    add(item.word);
+    return targets;
+  }
+
+  function buildReviewContextHtml(value, item, highlightEnabled) {
+    const text = (value ?? '').toString().trim();
+    if (!text) return '';
+
+    const targets = highlightEnabled ? getReviewHighlightTargets(item) : new Set();
+    if (!highlightEnabled || targets.size === 0) {
+      return escapeHtml(text);
+    }
+
+    const regex = getWordRegex();
+    regex.lastIndex = 0;
+    let result = '';
+    let lastIndex = 0;
+    let match;
+
+    while ((match = regex.exec(text)) !== null) {
+      const wordStart = match.index;
+      const wordText = match[0];
+      const normalized = normalizeWord(wordText);
+
+      if (wordStart > lastIndex) {
+        result += escapeHtml(text.slice(lastIndex, wordStart));
+      }
+
+      if (normalized && targets.has(normalized)) {
+        result += `<span class="review-context-highlight">${escapeHtml(wordText)}</span>`;
+      } else {
+        result += escapeHtml(wordText);
+      }
+
+      lastIndex = wordStart + wordText.length;
+    }
+
+    if (lastIndex < text.length) {
+      result += escapeHtml(text.slice(lastIndex));
+    }
+
+    return result;
+  }
+
+  function renderReviewContext(item, highlightEnabled) {
+    if (!elements.reviewContext) return;
+    const html = buildReviewContextHtml(item?.contextSentence, item, highlightEnabled);
+    elements.reviewContext.innerHTML = html ? html : '—';
+  }
+
   function setReviewAnswerVisibility(isShown) {
     isReviewAnswerShown = isShown;
     if (elements.reviewCard) {
@@ -78,6 +141,7 @@ export function createReviewController(elements) {
   function revealReviewAnswer() {
     if (!currentReviewItem || isReviewAnswerShown) return;
     setReviewAnswerVisibility(true);
+    renderReviewContext(currentReviewItem, true);
   }
 
   function getReviewGlobalId(item) {
@@ -201,8 +265,8 @@ export function createReviewController(elements) {
     const display = currentReviewItem?.lemma || currentReviewItem?.displayWord || currentReviewItem?.normalizedWord || currentReviewItem?.id || '—';
 
     setReviewText(elements.reviewWord, display);
-    setReviewText(elements.reviewContext, currentReviewItem?.contextSentence);
     setReviewAnswerVisibility(false);
+    renderReviewContext(currentReviewItem, false);
     clearReviewIntervals();
     hideReviewLoading();
 
