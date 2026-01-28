@@ -138,6 +138,11 @@
   padding: 10px 12px;
 }
 
+[data-theme="dark"] .review-row.is-context .review-value {
+  background: rgba(255, 255, 255, 0.06);
+  border-left-color: rgba(255, 255, 255, 0.22);
+}
+
 .review-context-highlight {
   font-weight: 700;
   background: var(--mark-bg);
